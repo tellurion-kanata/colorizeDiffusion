@@ -1,0 +1,36 @@
+model:
+  base_learning_rate: 4.5e-6
+  target: models.autoencoder.VAE
+  params:
+    lossconfig:
+      target: models.loss.LPIPSWithDiscriminator
+      params:
+        disc_start: 50001
+        kl_weight: 0.000001
+        disc_weight: 0.5
+
+    ddconfig:
+      double_z: True
+      z_channels: 4
+      resolution: 256
+      in_ch: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [ 1,2,4,4 ]  # num_down = len(ch_mult)-1
+      num_res_blocks: 2
+      attn_resolutions: [ ]
+      dropout: 0.0
+dataloader:
+  class: ImageLoader    # ['ImageLoader', 'DraftLoader']
+  params:
+    transform_list:
+      crop: True
+      flip: True
+      rotate: True
+      resize: True
+      jitter: False
+      rotate_range: 45
+    load_size: 288     # resize images to (load_size, load_size) when activate
+    crop_size: 256     # crop images to (image_size * crop_scale,) when activate
+    keep_ratio: True
+  shuffle: True

@@ -46,7 +46,7 @@ model:
           target: torch.nn.Identity
     cond_stage_trainable: true
     cond_stage_config:
-      target: models.mapper.ConditionWrapper
+      target: models.wrapper.ConditionWrapper
       params:
 #        scale_factor: 0.125
         clip_config:

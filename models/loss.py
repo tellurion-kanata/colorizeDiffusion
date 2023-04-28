@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from models.mapper import calculate_scale
+from models.wrapper import calculate_scale
 
 
 def sine_loss(fv, ov, text_features, text_norm):

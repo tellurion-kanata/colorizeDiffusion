@@ -16,7 +16,7 @@ model:
     scale_factor: 0.18215
 
     unet_config:
-      target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel2
+      target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel
       params:
         in_channels: 4
         c_channels: 1
@@ -48,7 +48,7 @@ model:
           target: torch.nn.Identity
     cond_stage_trainable: true
     cond_stage_config:
-      target: models.mapper.ConditionWrapper
+      target: models.wrapper.ConditionWrapper
       params:
         drop_rate: 0.5
         clip_config:

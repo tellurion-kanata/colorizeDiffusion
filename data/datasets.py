@@ -336,7 +336,7 @@ class CustomDataLoader(pl.LightningDataModule):
             dataroot        = opt.dataroot,
             mode            = opt.mode,
             eval_load_size  = eval_load_size,
-            save_input      = save_input
+            save_input      = save_input,
             **cfg['params']
         )
 

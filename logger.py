@@ -15,7 +15,7 @@ OPENAI_MEAN = torch.Tensor([0.48145466, 0.4578275, 0.40821073]).view(-1, 1, 1)
 OPENAI_STD = torch.Tensor([0.26862954, 0.26130258, 0.27577711]).view(-1, 1, 1)
 
 def default(opt, v, d=None):
-    if hasattr(opt, v) and getattr(opt, v):
+    if hasattr(opt, v):
         return getattr(opt, v)
     return d
 
@@ -214,9 +214,6 @@ class ImageLogger(Callback):
             Image.fromarray(img).save(path)
 
         for k in images:
-            if not (self.save_input or is_train) and k in ["sketch", "reference", "color", "conditioning"]:
-                continue
-
             dirpath = os.path.join(self.save_path, k)
             os.makedirs(dirpath, exist_ok=True)
             if is_train:
@@ -249,6 +246,7 @@ class ImageLogger(Callback):
                 unconditional_guidance_label = self.guidance_label,
                 use_ema_scope = self.use_ema,
                 ddim_steps = self.ddim_sample_step if is_train or self.ddim_sample else None,
+                return_inputs = self.save_input,
             )
 
             for k in images:
@@ -294,7 +292,7 @@ def setup_callbacks(opt, device_num=1, train=False):
         guidance_label   = opt.guidance_label,
         use_ema          = opt.use_ema,
         ddim_sample      = opt.ddim,
-        save_input       = opt.save_input,
+        save_input       = default(opt, 'save_input', True),
     )]
 
     if train:

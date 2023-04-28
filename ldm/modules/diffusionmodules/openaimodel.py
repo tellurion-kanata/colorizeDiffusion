@@ -789,68 +789,6 @@ class UNetModel(nn.Module):
 
 
 class DualCondUnetModel(UNetModel):
-    # Channel-wise Attention model
-    def __init__(self, c_channels, in_channels, model_channels, **kwargs):
-        super().__init__(in_channels, model_channels, add_only=True, **kwargs)
-        """
-            Semantic condition input blocks, implementation from ControlNet.
-            Paper: Adding Conditional Control to Text-to-Image Diffusion Models
-            Code link: https://github.com/lllyasviel/ControlNet 
-        """
-        self.semantic_input_blocks = TimestepEmbedSequential(
-            conv_nd(2, c_channels, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(2, 16, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(2, 16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(2, 32, 32, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(2, 32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(2, 96, 96, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(2, 96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(conv_nd(2, 256, model_channels, 3, padding=1))
-        )
-
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-        hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
-
-        if self.num_classes is not None:
-            assert y.shape[0] == x.shape[0]
-            emb = emb + self.label_emb(y)
-
-        h = x.type(self.dtype)
-        hint = self.semantic_input_blocks(concat, emb, context)
-        cxt_vector = gap(context)
-        cxt_shape = int((context.shape[1]) ** 0.5)
-
-        for module in self.input_blocks:
-            if exists(hint):
-                h = module(h, emb, cxt_vector) + hint
-                hint = None
-            else:
-                h = module(h, emb, cxt_vector)
-            hs.append(h)
-
-        h = self.middle_block(h, emb, cxt_vector)
-
-        for module in self.output_blocks:
-            input_context = context if h.shape[2] == cxt_shape else cxt_vector
-            h = th.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, input_context)
-        h = h.type(x.dtype)
-        return self.out(h)
-
-
-class DualCondUnetModel2(UNetModel):
     def __init__(self, c_channels, in_channels, model_channels, **kwargs):
         super().__init__(in_channels, model_channels, add_only=False, **kwargs)
         """

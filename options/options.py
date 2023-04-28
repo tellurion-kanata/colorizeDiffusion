@@ -50,7 +50,6 @@ class Options():
         else:
             self.add_testing_options()
 
-
     def add_training_options(self):
         self.parser.add_argument('--resume', action='store_true',
                                  help='Resume training')

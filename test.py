@@ -7,6 +7,7 @@ from options import Options
 from logger import setup_callbacks
 from utils import default, instantiate_from_config
 
+
 def modify_z_shape(params, eval_size):
     ldm_image_size = params['image_size']
     first_model_config = params['first_stage_config']
@@ -42,7 +43,13 @@ if __name__ == '__main__':
     print(f"Loaded model config from {cfg_path}")
 
     device_num = torch.cuda.device_count() if opt.device == "auto" else len(opt.device)
-    dataset = CustomDataLoader(opt, configs['dataloader'], device_num, opt.eval_load_size, opt.save_input)
+    dataset = CustomDataLoader(
+        opt             = opt,
+        cfg             = configs['dataloader'],
+        device_num      = device_num,
+        eval_load_size  = opt.eval_load_size,
+        save_input      = opt.save_input
+    )
     opt.data_size = dataset.get_data_size()
     parser.print_options(opt, phase='test')
 

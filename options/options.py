@@ -71,7 +71,7 @@ class Options():
                                  help='Number of accumulate batches')
         self.parser.add_argument('--sample_num', '-sn', default=None, type=int,
                                  help='Number of batch size for sampling')
-        self.parser.add_argument('--niter', type=int, default=100,
+        self.parser.add_argument('--niter', type=int, default=5,
                                  help='# of iter at starting learning rate')
         self.parser.add_argument('--niter_decay', type=int, default=0,
                                  help='# of iter to linearly decay learning rate to zero')
@@ -80,12 +80,12 @@ class Options():
         self.parser.add_argument('--save_first_step', action='store_true',
                                  help='Save the model in the beginning of a training')
         self.parser.add_argument('--save_freq', '-sf', type=int, default=1,
-                                 help='Saving network states per epochs')
+                                 help='Saving network states per # epochs')
         self.parser.add_argument('--save_freq_step', '-sfs', type=int, default=10000,
-                                 help='Saving latest network states per steps')
-        self.parser.add_argument('--start_save_ep', '-sts', type=int, default=10,
+                                 help='Saving latest network states per # steps')
+        self.parser.add_argument('--start_save_ep', '-sts', type=int, default=0,
                                  help='Start to save model each epoch after training # epochs')
-        self.parser.add_argument('--top_k', type=int, default=3,
+        self.parser.add_argument('--top_k', type=int, default=5,
                                  help='Save latest #-checkpoints')
         self.parser.add_argument('--print_freq', '-pf', type=int, default=1000,
                                  help='Print training states per iterations')

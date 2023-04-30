@@ -15,20 +15,6 @@ def disabled_train(self, mode=True):
     does not change anymore."""
     return self
 
-def calculate_scale(v: torch.Tensor, t: torch.Tensor, logit_scale_exp: torch.Tensor):
-    """
-        Calculate the projection of v along the direction of t
-        params:
-            v: visual features predicted by clip image encoder, shape: (b, n, c)
-            t: text feature predicted by clip text encoder, shape: (b, c)
-    """
-    image_features = v / v.norm(dim=2, keepdim=True)
-    text_features = t / t.norm(dim=1, keepdim=True)
-
-    proj = image_features @ text_features.t() * logit_scale_exp
-    t_square = (text_features ** 2).sum(dim=1).unsqueeze(0)
-    return proj / t_square
-
 
 class ReferenceWrapper(nn.Module):
     def __init__(self,

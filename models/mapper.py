@@ -4,26 +4,26 @@ import pytorch_lightning as pl
 
 from ldm.models.diffusion.ddpm import LatentDiffusion, exists
 from ldm.modules.encoders.modules import OpenCLIP, disabled_train
-from utils import instantiate_from_config
-from models.loss import calculate_scale
+from loss import MappingLoss
+
+
 
 
 class PromptMapper(pl.LightningModule):
-    def __init__(self, diffusion_config, clip_config, mapper_config, lossconfig, offset=1, type="pooled"):
+    def __init__(self, diffusion_config, mapper_config=None, clip_config=None, lossconfig=None, offset=1, type="pooled"):
         super().__init__()
         assert type in ["pooled", "tokens"]
         self.type = type
         self.offset = offset
         self.build_diffusion(diffusion_config)
 
-        self.clip = OpenCLIP(**clip_config)
-        self.mapper = PromptMapper(**mapper_config)
-        self.loss = instantiate_from_config(lossconfig)
+        self.clip = OpenCLIP(**clip_config if exists(clip_config) else None)
+        self.mapper = PromptMapper(**mapper_config if exists(mapper_config) else None)
+        self.loss = MappingLoss(**lossconfig if exists(lossconfig) else None)
 
     def build_diffusion(self, config):
         self.diffusion = LatentDiffusion(**config).eval()
         self.diffusion.train = disabled_train
-        del self.diffusion.cond_stage_model
 
         for param in self.diffusion.parameters():
             param.requires_grad = False
@@ -61,11 +61,11 @@ class PromptMapper(pl.LightningModule):
     def get_scale(self, v, t):
         """
             Shift the visual features forward to get a set of incorrect image features.
-            When adopting tokens as reference visual features, the scale would be (b, n, 1
+            When adopting tokens as reference visual features,the scale would be (b, n, 1
         """
         shifted_v = torch.roll(v, self.offset)
-        correct_scale = calculate_scale(v, t, self.clip.logit_scale_exp).mean(dim=1, keepdims=True)
-        shifted_scale = calculate_scale(shifted_v, t, self.clip.logit_scale_exp)
+        correct_scale = self.clip.calculate_scale(v, t).mean(dim=1, keepdims=True)
+        shifted_scale = self.clip.calculate_scale(shifted_v, t)
         dscale = correct_scale - shifted_scale
         return shifted_v, correct_scale, dscale
 
@@ -76,7 +76,7 @@ class PromptMapper(pl.LightningModule):
         shifted_features, scale, dscale = self.get_scale(image_features, text_features)
         fake_features = self(shifted_features, text_features, dscale)
         loss, loss_dict = self.loss(x, c_concat, fake_features, image_features, shifted_features,
-                                    text_features, scale, self.clip.logit_scale_exp, self.diffusion)
+                                    text_features, scale, self.clip.calculate_scale, self.diffusion)
 
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
@@ -94,7 +94,7 @@ class PromptMapper(pl.LightningModule):
         z, c_concat, image_features, text_features, x, xrec, xc = out
 
         if exists(scale):
-            cscale = calculate_scale(image_features, text_features, self.clip.logit_scale_exp)
+            cscale = self.clip.calculate_scale(image_features, text_features)
             dscale = scale - cscale
         else:
             # sampling during training and validation

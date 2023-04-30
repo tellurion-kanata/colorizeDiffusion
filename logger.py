@@ -15,7 +15,7 @@ OPENAI_MEAN = torch.Tensor([0.48145466, 0.4578275, 0.40821073]).view(-1, 1, 1)
 OPENAI_STD = torch.Tensor([0.26862954, 0.26130258, 0.27577711]).view(-1, 1, 1)
 
 def default(opt, v, d=None):
-    if hasattr(opt, v):
+    if hasattr(opt, v) and getattr(opt, v) is not None:
         return getattr(opt, v)
     return d
 

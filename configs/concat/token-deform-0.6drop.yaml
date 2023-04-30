@@ -50,7 +50,7 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        drop_rate: 0.3
+        drop_rate: 0.6
         clip_config:
           scale_factor: 1.0
           type: tokens

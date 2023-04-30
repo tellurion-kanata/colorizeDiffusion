@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from models.wrapper import calculate_scale
+from models.mapper import calculate_scale
 
 
 def sine_loss(fv, ov, text_features, text_norm):
@@ -26,7 +26,7 @@ class MappingLoss(nn.Module):
         self.device = device
 
     def forward(self, x, sketch, fake_crossattn, real_crossattn, origin_crossattn, text_features,
-                real_scale, logit_scale_exp, diffusion_model, split="train"):
+                real_scale, calculate_scale, diffusion_model, split="train"):
         t = torch.randint(0, diffusion_model.num_timesteps, (x.shape[0],), device=self.device).long()
         noise = torch.randn_like(x)
         x_noisy = diffusion_model.q_sample(x_start=x, t=t, noise=noise)
@@ -36,7 +36,7 @@ class MappingLoss(nn.Module):
         nll_loss = (real - fake).sum() / x.shape[0]
 
         text_norm = (text_features ** 2).sum(dim=1).unsqueeze(0)
-        cos_loss = ((real_scale - calculate_scale(fake_crossattn, text_features, logit_scale_exp).mean(dim=1, keepdims=True)) * text_norm) ** 2.
+        cos_loss = ((real_scale - calculate_scale(fake_crossattn, text_features).mean(dim=1, keepdims=True)) * text_norm) ** 2.
         sin_loss = sine_loss(fake_crossattn, origin_crossattn, text_features, text_norm)
         tri_loss = (cos_loss + sin_loss).sum() / (fake_crossattn.shape[0] * fake_crossattn.shape[1])
 

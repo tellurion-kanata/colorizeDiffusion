@@ -83,6 +83,20 @@ class OpenCLIP(nn.Module):
     def encode_text(self, text):
         return self.transformer(text)
 
+    def calculate_scale(self, v: torch.Tensor, t: torch.Tensor):
+        """
+            Calculate the projection of v along the direction of t
+            params:
+                v: visual features predicted by clip image encoder, shape: (b, n, c)
+                t: text feature predicted by clip text encoder, shape: (b, c)
+        """
+        image_features = v / v.norm(dim=2, keepdim=True)
+        text_features = t / t.norm(dim=1, keepdim=True)
+
+        proj = image_features @ text_features.t() * self.logit_scale_exp
+        t_square = (text_features ** 2).sum(dim=1).unsqueeze(0)
+        return proj / t_square
+
 
 class OpenCLIPEncoder(nn.Module):
     """
@@ -236,6 +250,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
         return x
 
     def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):

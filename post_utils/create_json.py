@@ -7,8 +7,8 @@ from glob import glob
 
 posts = []
 
-metaroot = "/home2/metadata"
-save_path = "/home2/danbooru/tags"
+metaroot = "/raid/metadata"
+save_path = "/raid/danbooru/tags"
 num_threads = 8
 
 
@@ -32,8 +32,6 @@ def processing(thread_id, post_files):
                 except:
                     continue
                 tail = id % 1000
-                if tail >= 600:
-                    continue
                 tag_string = post['tag_string'].replace(' ', ',')
                 tag_split = post['tag_string'].split(" ")
 

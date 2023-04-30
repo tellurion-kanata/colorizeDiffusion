@@ -1,4 +1,6 @@
 import json
+import os
+
 import torch.utils.data as data
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as tf
@@ -128,7 +130,7 @@ class ImageDataset(data.Dataset):
             elif self.eval_load_size:
                 img = transforms.Resize((self.eval_load_size, self.eval_load_size))(img)
         img = normalize(img)
-        return {'color': img, 'index': img_idx}
+        return {"color": img, "index": img_idx}
 
     def __len__(self):
         return len(self.image_files)
@@ -294,10 +296,10 @@ class DraftDataset(data.Dataset):
         ske, col, ref = self.normalize_inputs(imgs)
 
         return {
-            'sketch': ske,
-            'color': col,
-            'reference': ref,
-            'index': img_idx
+            "sketch": ske,
+            "color": col,
+            "reference": ref,
+            "index": img_idx
         }
 
     def __len__(self):
@@ -307,15 +309,38 @@ class DraftDataset(data.Dataset):
 class TextDataset(DraftDataset):
     def __init__(self, dataroot, **kwargs):
         super().__init__(dataroot, **kwargs)
-        self.tag_root = join(dataroot, "tags")
+        self.tag_root = join(abspath(dataroot), "tags")
+        self.image_files = glob(join(self.tag_root, '*.json'))
+        self.image_files += glob(join(self.sketch_root, '*/*.json'))
 
-    def __getitem__(self, index):
-        batch = super().__getitem__(index)
-        filename = self.image_files[index].replace(self.sketch_root, self.tag_root)
+    def get_images(self, index):
+        filename = self.image_files[index]
+        img_idx = splitext(basename(filename))[0]
         with open(filename, 'r') as file:
             text = json.load(file)["tag_string"]
-        batch.update({"text": text})
-        return batch
+
+        ske = Image.open(filename).convert('L')
+        col = Image.open(filename.replace(self.sketch_root, self.color_root)).convert('RGB')
+
+        if self.offset > 0:
+            ref_file = self.image_files[(index + self.offset) % self.data_size]
+            filename = basename(ref_file.replace("json", ))
+            ref = Image.open(filename.replace(self.sketch_root, self.color_root)).convert('RGB')
+        else:
+            ref = Image.open(filename.replace(self.sketch_root, self.ref_root)).convert('RGB')
+        return [ske, col, ref], img_idx, text
+
+    def __getitem__(self, index):
+        imgs, img_idx, text = self.get_images(index)
+        ske, col, ref = self.normalize_inputs(imgs)
+
+        return {
+            "sketch": ske,
+            "color": col,
+            "reference": ref,
+            "text": text,
+            "index": img_idx
+        }
 
 
 class CustomDataLoader(pl.LightningDataModule):

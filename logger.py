@@ -240,7 +240,7 @@ class ImageLogger(Callback):
             batch['sample'] = is_train
             images, index = pl_module.log_images(
                 batch = batch,
-                bs = self.sample_num,
+                N = self.sample_num,
                 sample = self.guidance_scale == 1.,
                 unconditional_guidance_scale = self.guidance_scale,
                 unconditional_guidance_label = self.guidance_label,

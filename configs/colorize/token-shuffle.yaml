@@ -56,7 +56,6 @@ model:
         clip_config:
           scale_factor: 1.0
           type: tokens
-#          use_positional_embedding: false
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']

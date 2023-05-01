@@ -66,14 +66,16 @@ class OpenCLIP(nn.Module):
                  type='pooled',
                  cache_dir="./pretrained_models",
                  freeze=True,
-                 layer="penultimate",
+                 layer="last",
+                 use_positional_embedding=False,
                  ):
         super().__init__()
         pretrained_version = versions[arch]
         model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=pretrained_version,
                                                             cache_dir=cache_dir)
 
-        self.visual = OpenCLIPEncoder(model=model, freeze=freeze, device=device, type=type)
+        self.visual = OpenCLIPEncoder(model=model, freeze=freeze, device=device, type=type,
+                                      use_positional_embedding=use_positional_embedding)
         self.transformer = FrozenOpenCLIPEmbedder(model=model, freeze=freeze, layer=layer)
         self.logit_scale_exp = model.logit_scale.exp()
 
@@ -90,12 +92,12 @@ class OpenCLIP(nn.Module):
                 v: visual tokens predicted by clip image encoder, shape: (b, n, c)
                 t: text feature predicted by clip text encoder (argmax -1), shape: (b, c)
         """
-        v = v.mean(dim=2)
-        image_features = v / v.norm(dim=1, keepdim=True)
-        text_features = t / t.norm(dim=1, keepdim=True)
+        image_features = v / v.norm(dim=2, keepdim=True)
+        text_features = t / t.norm(dim=2, keepdim=True)
 
-        proj = image_features @ text_features.t() * self.logit_scale_exp
-        t_square = (text_features ** 2).sum(dim=1).unsqueeze(0)
+        text_features = text_features.permute(0, 2, 1)
+        proj = torch.bmm(image_features, text_features)
+        t_square = (text_features ** 2).sum(dim=1, keepdim=True)
         return proj / t_square
 
 
@@ -115,7 +117,7 @@ class OpenCLIPEncoder(nn.Module):
                  type="pooled",
                  cache_dir="./pretrained_models",
                  freeze=True,
-                 use_positional_embedding=True,
+                 use_positional_embedding=False,
                  ):
         super().__init__()
         assert type in ["pooled", "tokens"]
@@ -251,8 +253,10 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
-        return x
+        x = x @ self.model.text_projection
+
+        argx = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
+        return x, argx.unsqueeze(1)
 
     def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):
         for i, r in enumerate(self.model.transformer.resblocks):

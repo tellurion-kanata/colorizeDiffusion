@@ -2,6 +2,9 @@ model:
   base_learning_rate: 1.0e-6
   target: models.mapper.PromptMapper
   params:
+    clip_config:
+      type: tokens
+      use_positional_embedding: true
     diffusion_config:
       target: ldm.models.diffusion.ddpm.LatentDiffusion
       params:
@@ -17,6 +20,7 @@ model:
         cond_stage_key: colorize
         conditioning_key: colorize
         scale_factor: 0.18215
+        ckpt_path: checkpoints/deform-0.5drop/latest.ckpt
 
         unet_config:
           target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel
@@ -53,7 +57,7 @@ model:
         cond_stage_config: __is_unconditional__
 
 dataloader:
-  class: TextDataset
+  class: TextLoader
   params:
     transform_list:
       flip: true

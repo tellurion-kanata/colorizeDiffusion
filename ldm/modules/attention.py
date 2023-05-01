@@ -37,6 +37,12 @@ def max_neg_value(t):
     return -torch.finfo(t.dtype).max
 
 
+def init_(tensor):
+    dim = tensor.shape[-1]
+    std = 1 / math.sqrt(dim)
+    tensor.uniform_(-std, std)
+    return tensor
+
 def gap(x: torch.Tensor = None, keepdim=True):
     if len(x.shape) == 4:
         return torch.mean(x, dim=[2, 3], keepdim=keepdim)
@@ -44,14 +50,6 @@ def gap(x: torch.Tensor = None, keepdim=True):
         return torch.mean(x, dim=[1], keepdim=keepdim)
     else:
         raise NotImplementedError('gap input should be 3d or 4d tensors')
-
-
-def init_(tensor):
-    dim = tensor.shape[-1]
-    std = 1 / math.sqrt(dim)
-    tensor.uniform_(-std, std)
-    return tensor
-
 
 # feedforward
 class GEGLU(nn.Module):

@@ -311,20 +311,22 @@ class TextDataset(DraftDataset):
         super().__init__(dataroot, **kwargs)
         self.tag_root = join(abspath(dataroot), "tags")
         self.image_files = glob(join(self.tag_root, '*.json'))
-        self.image_files += glob(join(self.sketch_root, '*/*.json'))
+        self.image_files += glob(join(self.tag_root, '*/*.json'))
 
     def get_images(self, index):
         filename = self.image_files[index]
         img_idx = splitext(basename(filename))[0]
         with open(filename, 'r') as file:
-            text = json.load(file)["tag_string"]
+            dict = json.load(file)
+            text = dict["tag_string"]
+            filename = dict["linked_img"]
 
         ske = Image.open(filename).convert('L')
         col = Image.open(filename.replace(self.sketch_root, self.color_root)).convert('RGB')
 
         if self.offset > 0:
             ref_file = self.image_files[(index + self.offset) % self.data_size]
-            filename = basename(ref_file.replace("json", ))
+            filename = basename(ref_file.replace(self.sketch_root, self.ref_root))
             ref = Image.open(filename.replace(self.sketch_root, self.color_root)).convert('RGB')
         else:
             ref = Image.open(filename.replace(self.sketch_root, self.ref_root)).convert('RGB')

@@ -93,9 +93,9 @@ class Autoencoder(pl.LightningModule):
         return [optim_G, optim_D], []
 
     @torch.no_grad()
-    def log_images(self, batch, bs=None, **kwargs):
+    def log_images(self, batch, N=None, **kwargs):
         log = dict()
-        x, idx = self.get_input(batch, bs)
+        x, idx = self.get_input(batch, N)
         log['color'] = x
         log['reconstructions'] = self(x)
         return log, idx
@@ -204,9 +204,9 @@ class VAE(pl.LightningModule):
         return [optim_G, optim_D], []
 
     @torch.no_grad()
-    def log_images(self, batch, bs=None, **kwargs):
+    def log_images(self, batch, N=None, **kwargs):
         log = dict()
-        x, idx = self.get_input(batch, bs)
+        x, idx = self.get_input(batch, N)
 
         log['color'] = x
         log['reconstructions'], posterior = self(x)

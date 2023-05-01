@@ -61,11 +61,11 @@ class PromptMapper(pl.LightningModule):
     def get_scale(self, v, t):
         """
             Shift the visual features forward to get a set of incorrect image features.
-            When adopting tokens as reference visual features,the scale would be (b, n, 1
+            When adopting tokens as reference visual features, the scale would be (b, n, 1)
         """
         shifted_v = torch.roll(v, self.offset)
-        correct_scale = self.clip.calculate_scale(v, t).mean(dim=1, keepdims=True)
-        shifted_scale = self.clip.calculate_scale(shifted_v, t)
+        correct_scale = self.clip.calculate_scale(v, t) * v / v.mean(dim=1, keepdims=True)
+        shifted_scale = self.clip.calculate_scale(shifted_v, t) * shifted_v / shifted_v.mean(dim=1, keepdims=True)
         dscale = correct_scale - shifted_scale
         return shifted_v, correct_scale, dscale
 

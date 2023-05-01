@@ -87,10 +87,11 @@ class OpenCLIP(nn.Module):
         """
             Calculate the projection of v along the direction of t
             params:
-                v: visual features predicted by clip image encoder, shape: (b, n, c)
-                t: text feature predicted by clip text encoder, shape: (b, c)
+                v: visual tokens predicted by clip image encoder, shape: (b, n, c)
+                t: text feature predicted by clip text encoder (argmax -1), shape: (b, c)
         """
-        image_features = v / v.norm(dim=2, keepdim=True)
+        v = v.mean(dim=2)
+        image_features = v / v.norm(dim=1, keepdim=True)
         text_features = t / t.norm(dim=1, keepdim=True)
 
         proj = image_features @ text_features.t() * self.logit_scale_exp

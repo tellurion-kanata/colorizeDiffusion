@@ -20,7 +20,7 @@ class ReferenceWrapper(nn.Module):
     def __init__(self,
                  clip_config,
                  pool_config=None,
-                 drop_rate=0.5
+                 drop_rate=0.,
                  ):
         super().__init__()
         self.encoder = OpenCLIPEncoder(**clip_config)
@@ -36,7 +36,7 @@ class ReferenceWrapper(nn.Module):
         z = self.encoder.encode(c).to(c.dtype)
         if exists(self.latent_pooling):
             z = self.latent_pooling(z, self.sample)
-        if self.training:
+        if self.training and self.drop_rate:
             z = torch.bernoulli((1 - self.drop_rate) * torch.ones(z.shape[0], device=z.device)[:, None, None]) * z
         return  {"c_crossattn": [z.detach()]}
 

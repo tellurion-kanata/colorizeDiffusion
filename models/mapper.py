@@ -27,7 +27,7 @@ class PromptMapper(pl.LightningModule):
         self.diffusion = instantiate_from_config(config).eval()
         self.diffusion.train = disabled_train
 
-    def init_from_ckpt(self, path):
+    def init_from_ckpt(self, path, ignore_keys={}):
         sd = torch.load(path, map_location="cpu")
         if "state_dict" in list(sd.keys()):
             sd = sd["state_dict"]
@@ -75,7 +75,7 @@ class PromptMapper(pl.LightningModule):
             Shift the visual features forward to get a set of incorrect image features.
             When adopting tokens as reference visual features, the scale would be (b, n, 1)
         """
-        shifted_v = torch.roll(v, self.offset)
+        shifted_v = torch.roll(v, self.offset, dims=0)
 
         shifted_scale = self.clip.calculate_scale(shifted_v, t)
         global_correct_scale = self.clip.calculate_scale(gap(v), t)
@@ -104,21 +104,27 @@ class PromptMapper(pl.LightningModule):
         opt = optim.AdamW(self.mapper.parameters(), lr=self.lr)
         return opt
 
-    def log_images(self, batch, target_scale=None, N=8, **kwargs):
+    def log_images(self, batch, target_scale=None, N=8, text=None, return_inputs=True, **kwargs):
         out, idx = self.get_input(batch, bs=N, return_first_stage_outputs=True, return_original_cond=True,
-                                  text="blue hair, pink eyes, yellow shirt")
+                                  text=text)
+        log = {}
         z, c_concat, image_features, text_features, arg_text_features, x, xrec, xc = out
-        if True or exists(target_scale):
+        if exists(target_scale):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = self.clip.calculate_scale(gap(image_features), arg_text_features)
-            target_scale = torch.ones_like(global_scale, device=global_scale)
+            target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
             dscale = (target_scale - global_scale) / global_scale * scale
         else:
-            # sampling during training and validation
+            # sampling during training
             image_features, dscale = self.get_scale(image_features, arg_text_features)
+            c = {"c_concat": [c_concat], "c_crossattn": [image_features]}
+            inputs = [[z, c], idx]
+            original_log, _ = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=False, **kwargs)
+            log.update({"original_sample": original_log["samples"]})
         c_crossattn = self(image_features, text_features, dscale)
 
         c = {"c_concat": [c_concat], "c_crossattn": [c_crossattn]}
-        inputs = [[z, c, x, xrec, xc], idx]
-        log, idx = self.diffusion.log_images(batch=None, inputs=inputs, N=N, **kwargs)
+        inputs = [[z, c, x, xrec, xc], idx] if return_inputs else [[z, c], idx]
+        sample_log, idx = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=return_inputs, **kwargs)
+        log.update(sample_log)
         return log, idx

@@ -1292,7 +1292,15 @@ class LatentDiffusion(DDPM):
 
         if unconditional_guidance_scale > 1.0:
             if self.cond_stage_key == "colorize":
-                uc = self.cond_stage_model.get_unconditional_conditioning(c, unconditional_guidance_label)
+                assert unconditional_guidance_label in ["sketch", "reference"]
+                if unconditional_guidance_label == "reference":
+                    crossattn = c["c_crossattn"][0]
+                    uc = {"c_concat": c["c_concat"],
+                          "c_crossattn": [torch.zeros_like(crossattn, device=crossattn.device)]}
+                else:
+                    concat = c["c_concat"][0]
+                    uc = {"c_concat": [torch.zeros_like(concat, device=concat.device)],
+                          "c_crossattn": c["c_crossnattn"]}
             else:
                 uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
                 if self.model.conditioning_key == "crossattn-adm":

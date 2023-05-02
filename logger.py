@@ -175,7 +175,7 @@ class ImageLogger(Callback):
     def __init__(self, batch_frequency, save_path, sample_num, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
                   ddim_sample=False, ddim_sample_step=200, guidance_scale=1.0, guidance_label="reference",
-                 save_input=False, use_ema=False, resume=False):
+                 save_input=False, use_ema=False, target_scale=None, text=None, resume=False):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -198,6 +198,8 @@ class ImageLogger(Callback):
         self.ddim_sample_step = ddim_sample_step
         self.save_input = save_input
         self.openai_norm_keys = ["reference", "conditioning"]
+        self.target_scale = target_scale
+        self.text = text
 
     @rank_zero_only
     def log_local(self, images, global_step, current_epoch, batch_idx, img_idx, is_train):
@@ -247,6 +249,8 @@ class ImageLogger(Callback):
                 use_ema_scope = self.use_ema,
                 ddim_steps = self.ddim_sample_step if is_train or self.ddim_sample else None,
                 return_inputs = self.save_input,
+                target_scale = self.target_scale,
+                text = self.text,
             )
 
             for k in images:
@@ -293,6 +297,8 @@ def setup_callbacks(opt, device_num=1, train=False):
         use_ema          = opt.use_ema,
         ddim_sample      = opt.ddim,
         save_input       = default(opt, 'save_input', True),
+        target_scale     = default(opt, 'target_scale', None),
+        text             = default(opt, 'text', None),
     )]
 
     if train:

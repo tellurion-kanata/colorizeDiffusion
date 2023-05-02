@@ -65,6 +65,7 @@ dataloader:
       resize: true
       jitter: False
       rotate_range: 45
+    refset_key: color
     load_size: 576
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
     use_tokens: true

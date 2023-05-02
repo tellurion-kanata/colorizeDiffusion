@@ -1,6 +1,13 @@
 import torch
 import torch.nn as nn
 
+def gap(x: torch.Tensor = None, keepdim=True):
+    if len(x.shape) == 4:
+        return torch.mean(x, dim=[2, 3], keepdim=keepdim)
+    elif len(x.shape) == 3:
+        return torch.mean(x, dim=[1], keepdim=keepdim)
+    else:
+        raise NotImplementedError('gap input should be 3d or 4d tensors')
 
 def sine_loss(fv, ov, text_features, text_norm):
     """
@@ -20,8 +27,9 @@ def sine_loss(fv, ov, text_features, text_norm):
 
 
 class MappingLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, trigular_weight=100.0):
         super().__init__()
+        self.trigular_weight = trigular_weight
 
     def forward(self, x, sketch, fake_crossattn, real_crossattn, origin_crossattn, text_features,
                 calculate_scale, diffusion_model, split="train"):
@@ -30,6 +38,8 @@ class MappingLoss(nn.Module):
         t = torch.randint(0, diffusion_model.num_timesteps, (x.shape[0],), device=x.device).long()
         noise = torch.randn_like(x)
         x_noisy = diffusion_model.q_sample(x_start=x, t=t, noise=noise)
+
+        inv_loss = (torch.abs(gap(real_crossattn) - gap(fake_crossattn))).sum() / b
 
         fake = diffusion_model.apply_model(x_noisy, t, {"c_concat": [sketch], "c_crossattn": [fake_crossattn]})
         real = diffusion_model.apply_model(x_noisy, t, {"c_concat": [sketch], "c_crossattn": [real_crossattn]})
@@ -43,10 +53,11 @@ class MappingLoss(nn.Module):
 
         cos_loss = torch.abs((text_norm * real_scale) ** 2. - (text_norm * fake_scale) ** 2.)
         sin_loss = sine_loss(fake_crossattn, origin_crossattn, text_features, text_norm)
-        tri_loss = (cos_loss + sin_loss).sum() / (b * n)
+        tri_loss = self.trigular_weight * (cos_loss + sin_loss).sum() / (b * n)
 
-        loss = nll_loss + tri_loss
+        loss = nll_loss + tri_loss + inv_loss
         log = {"{}/total_loss".format(split): loss.clone().detach().mean(),
+               "{}/inv_loss".format(split): inv_loss.detach().mean(),
                "{}/nll_loss".format(split): nll_loss.detach().mean(),
                "{}/tri_loss".format(split): tri_loss.detach().mean(),
                "{}/sin_loss".format(split): sin_loss.detach().mean(),

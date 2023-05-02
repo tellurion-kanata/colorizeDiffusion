@@ -54,9 +54,11 @@ class PromptMapper(pl.LightningModule):
 
         z = self.diffusion.get_first_stage_encoding(self.diffusion.encode_first_stage(x)).detach()
         c_crossattn = self.clip.encode_image(ref)
-        text_features, arg_text_features = self.clip.encode_text(text)
+        # text_features, arg_text_features = self.clip.encode_text(text)
+        arg_text_features = self.clip.encode_text(text)
 
-        out = [z, ske, c_crossattn, text_features, arg_text_features]
+        # out = [z, ske, c_crossattn, text_features, arg_text_features]
+        out = [z, ske, c_crossattn, arg_text_features]
         if return_first_stage_outputs:
             xrec = self.diffusion.decode_first_stage(z)
             out.extend([x, xrec])
@@ -86,12 +88,13 @@ class PromptMapper(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         out, idx = self.get_input(batch)
-        x, c_concat, image_features, text_features, arg_text_features = out
+        # x, c_concat, image_features, text_features, arg_text_features = out
+        x, c_concat, image_features, arg_text_features = out
 
         shifted_features, dscale = self.get_scale(image_features, arg_text_features)
-        fake_features = self(shifted_features, text_features, dscale)
+        fake_features = self(shifted_features, arg_text_features, dscale)
         loss, loss_dict = self.loss(x, c_concat, fake_features, image_features, shifted_features,
-                                    text_features, self.clip.calculate_scale, self.diffusion)
+                                    arg_text_features, self.clip.calculate_scale, self.diffusion)
 
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
@@ -108,7 +111,8 @@ class PromptMapper(pl.LightningModule):
         out, idx = self.get_input(batch, bs=N, return_first_stage_outputs=True, return_original_cond=True,
                                   text=text)
         log = {}
-        z, c_concat, image_features, text_features, arg_text_features, x, xrec, xc = out
+        # z, c_concat, image_features, text_features, arg_text_features, x, xrec, xc = out
+        z, c_concat, image_features, arg_text_features, x, xrec, xc = out
         if exists(target_scale):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = self.clip.calculate_scale(gap(image_features), arg_text_features)
@@ -121,7 +125,8 @@ class PromptMapper(pl.LightningModule):
             inputs = [[z, c], idx]
             original_log, _ = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=False, **kwargs)
             log.update({"original_sample": original_log["samples"]})
-        c_crossattn = self(image_features, text_features, dscale)
+        # c_crossattn = self(image_features, text_features, dscale)
+        c_crossattn = self(image_features, arg_text_features, dscale)
 
         c = {"c_concat": [c_concat], "c_crossattn": [c_crossattn]}
         inputs = [[z, c, x, xrec, xc], idx] if return_inputs else [[z, c], idx]

@@ -30,19 +30,20 @@ class PromptTransformer(nn.Module):
         inner_dim = inner_dim if exists(inner_dim) else input_dim
         n_heads = inner_dim // head_dim
 
-        self.proj_in = nn.Linear(input_dim+1, inner_dim)
+        self.proj_in = nn.Linear(input_dim, inner_dim)
         self.transformer = nn.ModuleList(
-            [BasicTransformerBlock(dim=inner_dim, context_dim=context_dim, n_heads=n_heads,
+            [BasicTransformerBlock(dim=inner_dim, context_dim=context_dim+1, n_heads=n_heads,
                                    d_head=head_dim, checkpoint=checkpoint) for i in range(n_layers)]
         )
         self.proj_out = nn.Linear(inner_dim, input_dim)
 
-    def forward(self, x: torch.Tensor, context: torch.Tensor, s: torch.Tensor):
-        base = x
+    def forward(self, x: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
+        context = t.repeat(1, x.shape[1], 1)
+        context = torch.cat([context, s], dim=2)
 
-        x = torch.cat([x, s], dim=2)
+        residual = x
         x = self.proj_in(x)
         for block in self.transformer:
             x = block(x, context)
         x = self.proj_out(x)
-        return base + x
+        return x + residual

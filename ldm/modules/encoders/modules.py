@@ -253,10 +253,8 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
-        x = x @ self.model.text_projection
-
-        argx = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-        return x, argx.unsqueeze(1)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.model.text_projection
+        return x.unsqueeze(1)
 
     def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):
         for i, r in enumerate(self.model.transformer.resblocks):

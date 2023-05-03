@@ -83,7 +83,7 @@ class PromptMapper(pl.LightningModule):
         global_correct_scale = self.clip.calculate_scale(gap(v), t)
         global_shifted_scale = self.clip.calculate_scale(gap(shifted_v), t)
 
-        dscale = (global_correct_scale - global_shifted_scale) / global_shifted_scale * shifted_scale
+        dscale = (1 + (global_correct_scale - global_shifted_scale) / global_shifted_scale) * shifted_scale
         return shifted_v, dscale
 
     def training_step(self, batch, batch_idx):
@@ -117,7 +117,7 @@ class PromptMapper(pl.LightningModule):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = self.clip.calculate_scale(gap(image_features), arg_text_features)
             target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
-            dscale = (target_scale - global_scale) / global_scale * scale
+            dscale = (1 + (target_scale - global_scale) / global_scale) * scale
         else:
             # sampling during training
             image_features, dscale = self.get_scale(image_features, arg_text_features)

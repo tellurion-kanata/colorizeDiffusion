@@ -67,7 +67,7 @@ class OpenCLIP(nn.Module):
                  cache_dir="./pretrained_models",
                  freeze=True,
                  layer="last",
-                 use_positional_embedding=False,
+                 use_positional_embedding=True,
                  ):
         super().__init__()
         pretrained_version = versions[arch]
@@ -117,7 +117,7 @@ class OpenCLIPEncoder(nn.Module):
                  type="pooled",
                  cache_dir="./pretrained_models",
                  freeze=True,
-                 use_positional_embedding=False,
+                 use_positional_embedding=True,
                  ):
         super().__init__()
         assert type in ["pooled", "tokens"]

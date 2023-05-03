@@ -355,7 +355,7 @@ class CustomDataLoader(pl.LightningDataModule):
             'TextLoader': TextDataset
         }
 
-        loader_cls = cfg['class']
+        loader_cls = cfg['class'] if not opt.eval else cfg.get("eval_class", cfg['class'])
         assert loader_cls in DATALOADER.keys(), f'DataLoader {loader_cls} does not exist.'
         loader = DATALOADER[loader_cls]
 

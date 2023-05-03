@@ -32,14 +32,13 @@ class PromptTransformer(nn.Module):
 
         self.proj_in = nn.Linear(input_dim, inner_dim)
         self.transformer = nn.ModuleList(
-            [BasicTransformerBlock(dim=inner_dim, context_dim=context_dim+1, n_heads=n_heads,
-                                   d_head=head_dim, checkpoint=checkpoint) for i in range(n_layers)]
+            [BasicTransformerBlock(dim=inner_dim, context_dim=context_dim, n_heads=n_heads,
+                                   d_head=head_dim, checkpoint=checkpoint, add_only=True) for i in range(n_layers)]
         )
         self.proj_out = nn.Linear(inner_dim, input_dim)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
-        context = t.repeat(1, x.shape[1], 1)
-        context = torch.cat([context, s], dim=2)
+        context = t.repeat(1, x.shape[1], 1) * s
 
         residual = x
         x = self.proj_in(x)

@@ -89,15 +89,15 @@ class OpenCLIP(nn.Module):
         """
             Calculate the projection of v along the direction of t
             params:
-                v: visual tokens predicted by clip image encoder, shape: (b, n, c)
-                t: text feature predicted by clip text encoder (argmax -1), shape: (b, c)
+                v: visual tokens from clip image encoder, shape: (b, n, c)
+                t: text features from clip text encoder (argmax -1), shape: (b, 1, c)
         """
-        image_features = v / v.norm(dim=2, keepdim=True)
-        text_features = t / t.norm(dim=2, keepdim=True)
+        # v = v / v.norm(dim=2, keepdim=True)
+        # t = t / t.norm(dim=2, keepdim=True)
 
-        text_features = text_features.permute(0, 2, 1)
-        proj = torch.bmm(image_features, text_features)
-        t_square = (text_features ** 2).sum(dim=1, keepdim=True)
+        t = t.permute(0, 2, 1)
+        proj = torch.bmm(v, t)
+        t_square = (t ** 2).sum(dim=1, keepdim=True)
         return proj / t_square
 
 
@@ -254,6 +254,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.model.text_projection
+        x = x / x.norm(dim=1, keepdim=True)
         return x.unsqueeze(1)
 
     def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):

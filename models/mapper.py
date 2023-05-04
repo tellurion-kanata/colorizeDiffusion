@@ -55,7 +55,8 @@ class PromptTransformer(nn.Module):
 
         self.proj_in = nn.Linear(input_dim, inner_dim)
         self.transformer = nn.ModuleList(
-            [MemoryEfficientSelfAttnBlock(query_dim=input_dim, dim_head=dim_head)] * n_layers
+            [MemoryEfficientSelfAttnBlock(query_dim=input_dim, dim_head=dim_head)
+            for i in range(n_layers)]
         )
         self.proj_out = nn.Linear(inner_dim, input_dim)
 
@@ -137,9 +138,9 @@ class PromptMapper(pl.LightningModule):
         """
         shifted_v = torch.roll(v, self.offset, dims=0)
 
-        shifted_scale = self.clip.calculate_scale(shifted_v, t)
         global_correct_scale = self.clip.calculate_scale(gap(v), t)
-        global_shifted_scale = self.clip.calculate_scale(gap(shifted_v), t)
+        shifted_scale = self.clip.calculate_scale(shifted_v, t)
+        global_shifted_scale = gap(shifted_scale)
 
         dscale = (global_correct_scale - global_shifted_scale) * (shifted_scale / global_shifted_scale)
         return shifted_v, dscale
@@ -173,8 +174,8 @@ class PromptMapper(pl.LightningModule):
         z, c_concat, image_features, arg_text_features, x, xrec, xc = out
         if exists(target_scale):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
-            global_scale = self.clip.calculate_scale(gap(image_features), arg_text_features)
-            target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
+            global_scale = gap(scale)
+            # target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
             dscale = (target_scale - global_scale) * (scale / global_scale)
         else:
             # sampling during training

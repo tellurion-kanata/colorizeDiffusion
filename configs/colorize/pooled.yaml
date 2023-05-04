@@ -27,7 +27,9 @@ model:
         channel_mult: [1, 2, 4, 4]
         num_head_channels: 64
         use_checkpoint: true
+        use_spatial_transformer: true
         transformer_depth: 1
+        context_dim: 1024
         add_only: true
 
     first_stage_config:

@@ -296,6 +296,7 @@ def setup_callbacks(opt, device_num=1, train=False):
         guidance_label   = opt.guidance_label,
         use_ema          = opt.use_ema,
         ddim_sample      = opt.ddim,
+        ddim_sample_step = opt.ddim_step,
         save_input       = default(opt, 'save_input', True),
         target_scale     = default(opt, 'target_scale', None),
         text             = default(opt, 'text', None),

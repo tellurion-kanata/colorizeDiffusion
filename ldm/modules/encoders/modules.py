@@ -12,6 +12,9 @@ versions = {
     "ViT-H-14": "laion2b_s32b_b79k"
 }
 
+OPENAI_MEAN, OPENAI_STD = (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)
+
+
 class AbstractEncoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -76,11 +79,11 @@ class OpenCLIP(nn.Module):
 
         self.visual = OpenCLIPEncoder(model=model, freeze=freeze, device=device, type=type,
                                       use_positional_embedding=use_positional_embedding)
-        self.transformer = FrozenOpenCLIPEmbedder(model=model, freeze=freeze, layer=layer)
+        self.transformer = FrozenOpenCLIPEmbedder(model=model, freeze=freeze, layer=layer, device=device)
         self.logit_scale_exp = model.logit_scale.exp()
 
-    def encode_image(self, image):
-        return self.visual(image)
+    def encode_image(self, img):
+        return self.visual.encode(img)
 
     def encode_text(self, text):
         return self.transformer(text)
@@ -202,8 +205,8 @@ class OpenCLIPEncoder(nn.Module):
         output = output @ self.model.proj
         return output
 
-    def encode(self, image):
-        return self(image.to(self.device))
+    def encode(self, img):
+        return self(img.to(self.device))
 
 
 class FrozenOpenCLIPEmbedder(AbstractEncoder):

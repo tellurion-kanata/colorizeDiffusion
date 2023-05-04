@@ -41,6 +41,8 @@ class Options():
                                  help='Use ema weights during sampling.')
         self.parser.add_argument('--ddim', action='store_true',
                                  help='Use DDIM sapmler during sampling.')
+        self.parser.add_argument('--ddim_step', type=int, default=200,
+                                 help='DDIM sampler step')
         self.parser.add_argument('--seed', type=int, default=None,
                                  help='Initialize global seed.')
 

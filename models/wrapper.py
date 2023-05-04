@@ -56,7 +56,7 @@ class ConditionWrapper(nn.Module):
         self.latent_pooling = instantiate_from_config(pool_config) if exists(pool_config) else None
         self.priorbook = nn.Parameter(torch.randn([n_emb, emb_dims])) if use_codebook else None
 
-        self.use_adm = (clip_config.get(type, "pooled") == "pooled" and use_adm)
+        self.use_adm = (clip_config.get("type", "pooled") == "pooled" and use_adm)
         self.n_emb = n_emb
         self.drop_rate = drop_rate
         self.sample = False

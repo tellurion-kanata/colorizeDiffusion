@@ -1,14 +1,71 @@
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import pytorch_lightning as pl
+import xformers
 
 from ldm.models.diffusion.ddpm import exists
-from ldm.modules.attention import gap
+from ldm.modules.attention import gap, MemoryEfficientCrossAttention
 from ldm.modules.encoders.modules import OpenCLIP, disabled_train
 from utils import instantiate_from_config
 from models.loss import MappingLoss
-from models.model import PromptTransformer
 
+class MemoryEfficientSelfAttnBlock(MemoryEfficientCrossAttention):
+    def __init__(self, query_dim, **kwargs):
+        super().__init__(query_dim=query_dim, **kwargs)
+        self.norm = nn.LayerNorm(query_dim)
+
+    def forward(self, x, context=None, mask=None):
+        residual = x
+
+        x = self.norm(x)
+        q = self.to_q(x)
+        k = self.to_k(x)
+        v = self.to_v(x)
+
+        b, _, _ = q.shape
+        q, k, v = map(
+            lambda t: t.unsqueeze(3)
+            .reshape(b, t.shape[1], self.heads, self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * self.heads, t.shape[1], self.dim_head)
+            .contiguous(),
+            (q, k, v),
+        )
+
+        # actually compute the attention, what we cannot get enough of
+        # out = F.scaled_dot_product_attention(q, k, v, attn_mask=None)
+        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+
+        if exists(mask):
+            raise NotImplementedError
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, self.heads, out.shape[1], self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, out.shape[1], self.heads * self.dim_head)
+        )
+        return self.to_out(out) + residual
+
+
+class PromptTransformer(nn.Module):
+    def __init__(self, input_dim=1024, n_layers=4, inner_dim=None, dim_head=64):
+        super().__init__()
+        inner_dim = inner_dim if exists(inner_dim) else input_dim
+
+        self.proj_in = nn.Linear(input_dim, inner_dim)
+        self.transformer = nn.ModuleList(
+            [MemoryEfficientSelfAttnBlock(query_dim=input_dim, dim_head=dim_head)] * n_layers
+        )
+        self.proj_out = nn.Linear(inner_dim, input_dim)
+
+    def forward(self, x: torch.Tensor, s: torch.Tensor):
+        x = x * s
+        x = self.proj_in(x)
+        for block in self.transformer:
+            x = block(x)
+        x = self.proj_out(x)
+        return x
 
 
 class PromptMapper(pl.LightningModule):
@@ -68,9 +125,10 @@ class PromptMapper(pl.LightningModule):
             out.append({"sketch": ske, "reference": ref})
         return out, idx
 
-    def forward(self, image_features, text_features, scale):
-        predict_image_features = self.mapper(image_features, text_features, scale)
-        return predict_image_features
+    def forward(self, v: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
+        t = t.repeat(1, v.shape[1], 1)
+        fake_v = v + self.mapper(t, s)
+        return fake_v
 
     def get_scale(self, v, t):
         """
@@ -83,7 +141,7 @@ class PromptMapper(pl.LightningModule):
         global_correct_scale = self.clip.calculate_scale(gap(v), t)
         global_shifted_scale = self.clip.calculate_scale(gap(shifted_v), t)
 
-        dscale = (1 + (global_correct_scale - global_shifted_scale) / global_shifted_scale) * shifted_scale
+        dscale = (global_correct_scale - global_shifted_scale) * (shifted_scale / global_shifted_scale)
         return shifted_v, dscale
 
     def training_step(self, batch, batch_idx):
@@ -117,7 +175,7 @@ class PromptMapper(pl.LightningModule):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = self.clip.calculate_scale(gap(image_features), arg_text_features)
             target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
-            dscale = (1 + (target_scale - global_scale) / global_scale) * scale
+            dscale = (target_scale - global_scale) * (scale / global_scale)
         else:
             # sampling during training
             image_features, dscale = self.get_scale(image_features, arg_text_features)

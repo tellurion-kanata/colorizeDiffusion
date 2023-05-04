@@ -790,7 +790,7 @@ class UNetModel(nn.Module):
 
 class DualCondUnetModel(UNetModel):
     def __init__(self, c_channels, in_channels, model_channels, **kwargs):
-        super().__init__(in_channels, model_channels, add_only=False, **kwargs)
+        super().__init__(in_channels, model_channels, **kwargs)
         """
             Semantic condition input blocks, implementation from ControlNet.
             Paper: Adding Conditional Control to Text-to-Image Diffusion Models

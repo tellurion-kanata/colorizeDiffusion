@@ -58,6 +58,7 @@ model:
 
 dataloader:
   class: TextLoader
+  eval_class: DraftLoader
   params:
     transform_list:
       flip: true

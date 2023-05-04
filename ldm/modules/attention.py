@@ -220,7 +220,6 @@ class MemoryEfficientAttnBlock(nn.Module):
             self.num_heads = in_channels // num_head_channels
         print(f"Setting up {self.__class__.__name__}. Inner dim is {in_channels} and using {self.num_heads} heads")
         self.use_checkpoint = use_checkpoint
-        self.norm = normalization(in_channels)
 
         self.norm = Normalize(in_channels)
         self.q = torch.nn.Conv2d(in_channels,

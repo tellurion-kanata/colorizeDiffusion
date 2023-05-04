@@ -10,7 +10,7 @@ from tqdm import tqdm
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only
 
-maxm_sample_size = 16
+maxm_sample_size = 8
 OPENAI_MEAN = torch.Tensor([0.48145466, 0.4578275, 0.40821073]).view(-1, 1, 1)
 OPENAI_STD = torch.Tensor([0.26862954, 0.26130258, 0.27577711]).view(-1, 1, 1)
 

@@ -28,6 +28,7 @@ model:
         num_head_channels: 64
         use_checkpoint: true
         transformer_depth: 1
+        add_only: true
 
     first_stage_config:
       target: models.autoencoder.VAE

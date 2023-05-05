@@ -56,7 +56,7 @@ class ConditionWrapper(nn.Module):
         self.latent_pooling = instantiate_from_config(pool_config) if exists(pool_config) else None
         self.priorbook = nn.Parameter(torch.randn([n_emb, emb_dims])) if use_codebook else None
 
-        self.use_adm = (clip_config.get("type", "pooled") == "pooled" and use_adm)
+        self.use_adm = use_adm
         self.n_emb = n_emb
         self.drop_rate = drop_rate
         self.sample = False
@@ -85,11 +85,24 @@ class ConditionWrapper(nn.Module):
 
         c_dict = {"c_concat": [s]}
         # using cross-attention path for visual tokens
-        if not self.use_adm:
-            if exists(self.priorbook):
-                priorbook = torch.ones([z.shape[0]], device=z.device)[:, None, None] * self.priorbook
-                z = torch.cat([z, priorbook], dim=1)
-            c_dict.update({"c_crossattn": [z]})
-        else:
+        if exists(self.priorbook):
+            priorbook = torch.ones([z.shape[0]], device=z.device)[:, None, None] * self.priorbook
+            z = torch.cat([z, priorbook], dim=1)
+        c_dict.update({"c_crossattn": [z]})
+        if self.use_adm:
             c_dict.update({"c_adm": [gap(z, keepdim=False)]})
         return c_dict
+
+    def get_unconditional_conditioning(self, c, unconditional_guidance_label):
+        if unconditional_guidance_label == "reference":
+            crossattn = c["c_crossattn"][0]
+            uc = {"c_concat": c["c_concat"],
+                  "c_crossattn": [torch.zeros_like(crossattn, device=crossattn.device)]}
+            if self.use_adm:
+                adm = c["c_adm"][0]
+                uc.update({"c_adm": [torch.zeros_like(adm, device=adm.device)]})
+        else:
+            concat = c["c_concat"][0]
+            uc = {"c_concat": [torch.zeros_like(concat, device=concat.device)],
+                  "c_crossattn": c["c_crossnattn"]}
+        return uc

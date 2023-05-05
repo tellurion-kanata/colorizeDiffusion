@@ -187,7 +187,7 @@ class ImageLogger(Callback):
         if not increase_log_steps:
             self.log_steps = [self.batch_freq]
         self.clamp = clamp
-        self.disabled = disabled
+        self.disabled = disabled or sample_num == 0
         self.log_on_batch_idx = log_on_batch_idx
         self.log_first_step = log_first_step if not check_memory_use else False
         self.save_path = save_path

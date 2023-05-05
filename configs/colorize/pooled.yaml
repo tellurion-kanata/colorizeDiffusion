@@ -51,7 +51,7 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-#        scale_factor: 0.125
+        drop_rate: 0.5
         clip_config:
           scale_factor: 1.0
           type: pooled

@@ -1157,16 +1157,16 @@ class LatentDiffusion(DDPM):
                                   mask=mask, x0=x0)
 
     @torch.no_grad()
-    def sample_log(self, cond, batch_size, ddim, ddim_steps, shape, **kwargs):
+    def sample_log(self, cond, batch_size, ddim, ddim_steps, shape, x_T=None, **kwargs):
         if ddim:
             ddim_sampler = DDIMSampler(self)
-            samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size,
-                                                         shape, cond, verbose=False, **kwargs)
+            samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond,
+                                                         x_T=x_T, verbose=False, **kwargs)
 
         else:
             shape = (batch_size, *shape)
             samples, intermediates = self.sample(cond=cond, batch_size=batch_size, shape=shape,
-                                                 return_intermediates=True, **kwargs)
+                                                 x_T=x_T, return_intermediates=True, **kwargs)
 
         return samples, intermediates
 
@@ -1204,12 +1204,17 @@ class LatentDiffusion(DDPM):
         use_ddim = ddim_steps is not None
 
         log = dict()
-        out, idx = self.get_input(batch, self.first_stage_key,
-                                  return_first_stage_outputs=return_inputs,
-                                  cond_key=self.cond_stage_key,
-                                  force_c_encode=True,
-                                  return_original_cond=return_inputs,
-                                  bs=N) if not exists(inputs) else inputs
+        if not exists(inputs):
+            out, idx = self.get_input(batch, self.first_stage_key,
+                                      return_first_stage_outputs=return_inputs,
+                                      cond_key=self.cond_stage_key,
+                                      force_c_encode=True,
+                                      return_original_cond=return_inputs,
+                                      bs=N)
+            x_T = None
+        else:
+            out, idx, x_T = inputs
+
         if return_inputs:
             z, c, x, xrec, xc = out
 
@@ -1270,7 +1275,7 @@ class LatentDiffusion(DDPM):
             # get denoise row
             with ema_scope("Sampling"):
                 samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, shape=shape, ddim=use_ddim,
-                                                         ddim_steps=ddim_steps, eta=ddim_eta)
+                                                         x_T=x_T, ddim_steps=ddim_steps, eta=ddim_eta)
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
@@ -1293,21 +1298,14 @@ class LatentDiffusion(DDPM):
         if unconditional_guidance_scale > 1.0:
             if self.cond_stage_key == "colorize":
                 assert unconditional_guidance_label in ["sketch", "reference"]
-                if unconditional_guidance_label == "reference":
-                    crossattn = c["c_crossattn"][0]
-                    uc = {"c_concat": c["c_concat"],
-                          "c_crossattn": [torch.zeros_like(crossattn, device=crossattn.device)]}
-                else:
-                    concat = c["c_concat"][0]
-                    uc = {"c_concat": [torch.zeros_like(concat, device=concat.device)],
-                          "c_crossattn": c["c_crossnattn"]}
+                self.cond_stage_model.get_unconditional_conditioning(c, unconditional_guidance_label)
             else:
                 uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
                 if self.model.conditioning_key == "crossattn-adm":
                     uc = {"c_crossattn": [uc], "c_adm": c["c_adm"]}
             with ema_scope("Sampling with classifier-free guidance"):
                 samples_cfg, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, shape=shape,
-                                                 ddim_steps=ddim_steps, eta=ddim_eta,
+                                                 ddim_steps=ddim_steps, eta=ddim_eta, x_T=x_T,
                                                  unconditional_guidance_scale=unconditional_guidance_scale,
                                                  unconditional_conditioning=uc,
                                                  )
@@ -1340,6 +1338,7 @@ class LatentDiffusion(DDPM):
             with ema_scope("Plotting Progressives"):
                 img, progressives = self.progressive_denoising(c,
                                                                shape=shape,
+                                                               x_T=x_T,
                                                                batch_size=N)
             prog_row = self._get_denoise_row_from_list(progressives, desc="Progressive Generation")
             log["progressive_row"] = prog_row
@@ -1392,7 +1391,8 @@ class DiffusionWrapper(pl.LightningModule):
         self.diffusion_model = instantiate_from_config(diff_model_config)
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'concat-adm'
-                                         'hybrid-adm', 'crossattn-adm', 'colorize', 'concat-adm']
+                                         'hybrid-adm', 'crossattn-adm', 'colorize', 'concat-adm',
+                                         'colorize-adm']
 
     def forward(self, x, t, c_concat: list=None, c_crossattn: list=None, c_adm=None):
         if self.conditioning_key is None:
@@ -1414,6 +1414,10 @@ class DiffusionWrapper(pl.LightningModule):
         elif self.conditioning_key == 'colorize':
             c_concat, c_crossattn = map(lambda t: torch.cat(t, 1), (c_concat, c_crossattn))
             out = self.diffusion_model(x, t, concat=c_concat, context=c_crossattn)
+        elif self.conditioning_key == 'colorize-adm':
+            c_concat, c_crossattn, c_adm = map(lambda t: torch.cat(t, 1),
+                                               (c_concat, c_crossattn, c_adm))
+            out = self.diffusion_model(x, t, concat=c_concat, context=c_crossattn, y=c_adm)
         elif self.conditioning_key == 'hybrid-adm':
             assert c_adm is not None
             xc = torch.cat([x] + c_concat, dim=1)
@@ -1432,5 +1436,4 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(x, t, concat=c_concat, y=c_adm)
         else:
             raise NotImplementedError()
-
         return out

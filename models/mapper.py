@@ -49,24 +49,21 @@ class MemoryEfficientSelfAttnBlock(MemoryEfficientCrossAttention):
 
 
 class PromptTransformer(nn.Module):
-    def __init__(self, input_dim=1024, n_layers=4, inner_dim=None, dim_head=64):
+    def __init__(self, input_dim=1024, n_layers=4):
         super().__init__()
-        inner_dim = inner_dim if exists(inner_dim) else input_dim
+        model = []
+        block = nn.Sequential(*[nn.LayerNorm(input_dim), nn.Linear(input_dim, input_dim), nn.SiLU()])
+        for i in range(n_layers - 1):
+            model += [block]
+        self.model = nn.Sequential(*model)
+        self.proj_scale = nn.Linear(input_dim, input_dim)
+        self.proj_out = block
 
-        self.proj_in = nn.Linear(input_dim, inner_dim)
-        self.transformer = nn.ModuleList(
-            [MemoryEfficientSelfAttnBlock(query_dim=input_dim, dim_head=dim_head)
-            for i in range(n_layers)]
-        )
-        self.proj_out = nn.Linear(inner_dim, input_dim)
-
-    def forward(self, x: torch.Tensor, s: torch.Tensor):
-        x = x * s
-        x = self.proj_in(x)
-        for block in self.transformer:
-            x = block(x)
-        x = self.proj_out(x)
-        return x
+    def forward(self, v: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
+        for block in self.model:
+            t = block(t) + t
+        v = v + self.proj_out(t) * self.proj_scale(s)
+        return v
 
 
 class PromptMapper(pl.LightningModule):
@@ -128,7 +125,7 @@ class PromptMapper(pl.LightningModule):
 
     def forward(self, v: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
         t = t.repeat(1, v.shape[1], 1)
-        fake_v = v + self.mapper(t, s)
+        fake_v = self.mapper(v, t, s)
         return fake_v
 
     def get_scale(self, v, t):
@@ -166,7 +163,8 @@ class PromptMapper(pl.LightningModule):
         opt = optim.AdamW(self.mapper.parameters(), lr=self.lr)
         return opt
 
-    def log_images(self, batch, target_scale=None, N=8, text=None, return_inputs=True, **kwargs):
+    def log_images(self, batch, target_scale=None, N=8, text=None, return_inputs=True,
+                   sample_original_cond=True, unconditional_guidance_scale=1.0, **kwargs):
         out, idx = self.get_input(batch, bs=N, return_first_stage_outputs=True, return_original_cond=True,
                                   text=text)
         log = {}
@@ -175,20 +173,29 @@ class PromptMapper(pl.LightningModule):
         if exists(target_scale):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = gap(scale)
+            print(f"current global scale: {global_scale}")
             # target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
             dscale = (target_scale - global_scale) * (scale / global_scale)
         else:
             # sampling during training
             image_features, dscale = self.get_scale(image_features, arg_text_features)
+
+        x_T = torch.randn_like(z, device=z.device)
+        if sample_original_cond:
             c = {"c_concat": [c_concat], "c_crossattn": [image_features]}
-            inputs = [[z, c], idx]
-            original_log, _ = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=False, **kwargs)
-            log.update({"original_sample": original_log["samples"]})
+            inputs = [[z, c], idx, x_T]
+            original_log, _ = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=False,
+                                                        unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
+            original_sample_key = f"samples_cfg_scale_{unconditional_guidance_scale}" \
+                if unconditional_guidance_scale > 1.0 else "samples"
+            log.update({"original_sample": original_log[original_sample_key]})
+
         # c_crossattn = self(image_features, text_features, dscale)
         c_crossattn = self(image_features, arg_text_features, dscale)
 
         c = {"c_concat": [c_concat], "c_crossattn": [c_crossattn]}
-        inputs = [[z, c, x, xrec, xc], idx] if return_inputs else [[z, c], idx]
-        sample_log, idx = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=return_inputs, **kwargs)
+        inputs = [[z, c, x, xrec, xc], idx, x_T] if return_inputs else [[z, c], idx, x_T]
+        sample_log, idx = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=return_inputs,
+                                                    unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
         log.update(sample_log)
         return log, idx

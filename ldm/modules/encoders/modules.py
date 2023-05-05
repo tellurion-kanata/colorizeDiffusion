@@ -95,13 +95,9 @@ class OpenCLIP(nn.Module):
                 v: visual tokens from clip image encoder, shape: (b, n, c)
                 t: text features from clip text encoder (argmax -1), shape: (b, 1, c)
         """
-        # v = v / v.norm(dim=2, keepdim=True)
-        # t = t / t.norm(dim=2, keepdim=True)
-
         t = t.permute(0, 2, 1)
         proj = torch.bmm(v, t)
-        t_square = (t ** 2).sum(dim=1, keepdim=True)
-        return proj / t_square
+        return proj
 
 
 class OpenCLIPEncoder(nn.Module):

@@ -10,64 +10,10 @@ from ldm.modules.encoders.modules import OpenCLIP, disabled_train
 from utils import instantiate_from_config
 from models.loss import MappingLoss
 
-class MemoryEfficientSelfAttnBlock(MemoryEfficientCrossAttention):
-    def __init__(self, query_dim, **kwargs):
-        super().__init__(query_dim=query_dim, **kwargs)
-        self.norm = nn.LayerNorm(query_dim)
-
-    def forward(self, x, context=None, mask=None):
-        residual = x
-
-        x = self.norm(x)
-        q = self.to_q(x)
-        k = self.to_k(x)
-        v = self.to_v(x)
-
-        b, _, _ = q.shape
-        q, k, v = map(
-            lambda t: t.unsqueeze(3)
-            .reshape(b, t.shape[1], self.heads, self.dim_head)
-            .permute(0, 2, 1, 3)
-            .reshape(b * self.heads, t.shape[1], self.dim_head)
-            .contiguous(),
-            (q, k, v),
-        )
-
-        # actually compute the attention, what we cannot get enough of
-        # out = F.scaled_dot_product_attention(q, k, v, attn_mask=None)
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
-
-        if exists(mask):
-            raise NotImplementedError
-        out = (
-            out.unsqueeze(0)
-            .reshape(b, self.heads, out.shape[1], self.dim_head)
-            .permute(0, 2, 1, 3)
-            .reshape(b, out.shape[1], self.heads * self.dim_head)
-        )
-        return self.to_out(out) + residual
-
-
-class PromptTransformer(nn.Module):
-    def __init__(self, input_dim=1024, n_layers=4):
-        super().__init__()
-        model = []
-        block = nn.Sequential(*[nn.LayerNorm(input_dim), nn.Linear(input_dim, input_dim), nn.SiLU()])
-        for i in range(n_layers - 1):
-            model += [block]
-        self.model = nn.Sequential(*model)
-        self.proj_scale = nn.Linear(input_dim, input_dim)
-        self.proj_out = block
-
-    def forward(self, v: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
-        for block in self.model:
-            t = block(t) + t
-        v = v + self.proj_out(t) * self.proj_scale(s)
-        return v
 
 
 class PromptMapper(pl.LightningModule):
-    def __init__(self, diffusion_config, mapper_config={}, clip_config={}, offset=1, type="tokens"):
+    def __init__(self, diffusion_config, context_dim, clip_config={}, offset=1, type="tokens"):
         super().__init__()
         assert type in ["pooled", "tokens"]
         self.type = type
@@ -75,8 +21,9 @@ class PromptMapper(pl.LightningModule):
         self.build_diffusion(diffusion_config)
 
         self.clip = OpenCLIP(**clip_config)
-        self.mapper = PromptTransformer(**mapper_config)
-        self.loss = MappingLoss()
+        self.M = nn.Linear(context_dim, context_dim)
+        # self.mapper = PromptTransformer(**mapper_config)
+        # self.loss = MappingLoss()
 
     def build_diffusion(self, config):
         self.diffusion = instantiate_from_config(config).eval()
@@ -125,7 +72,10 @@ class PromptMapper(pl.LightningModule):
 
     def forward(self, v: torch.Tensor, t: torch.Tensor, s: torch.Tensor):
         t = t.repeat(1, v.shape[1], 1)
-        fake_v = self.mapper(v, t, s)
+        gap_v = gap(v)
+        gap_v = torch.where(gap_v != 0, gap_v, torch.full_like(gap_v, 1e-6))
+        fake_v = v + t * s * self.mapper(v/gap_v)
+        # fake_v = self.mapper(v, t, s)
         return fake_v
 
     def get_scale(self, v, t):
@@ -134,13 +84,9 @@ class PromptMapper(pl.LightningModule):
             When adopting tokens as reference visual features, the scale would be (b, n, 1)
         """
         shifted_v = torch.roll(v, self.offset, dims=0)
-
-        global_correct_scale = self.clip.calculate_scale(gap(v), t)
-        shifted_scale = self.clip.calculate_scale(shifted_v, t)
-        global_shifted_scale = gap(shifted_scale)
-
-        dscale = (global_correct_scale - global_shifted_scale) * (shifted_scale / global_shifted_scale)
-        return shifted_v, dscale
+        correct_scale = self.clip.calculate_scale(gap(v), t)
+        shifted_scale = self.clip.calculate_scale(gap(shifted_v), t)
+        return shifted_v, correct_scale - shifted_scale
 
     def training_step(self, batch, batch_idx):
         out, idx = self.get_input(batch)
@@ -174,8 +120,7 @@ class PromptMapper(pl.LightningModule):
             scale = self.clip.calculate_scale(image_features, arg_text_features)
             global_scale = gap(scale)
             print(f"current global scale: {global_scale}")
-            # target_scale = torch.ones_like(global_scale, device=global_scale.device) * target_scale
-            dscale = (target_scale - global_scale) * (scale / global_scale)
+            dscale = target_scale - global_scale
         else:
             # sampling during training
             image_features, dscale = self.get_scale(image_features, arg_text_features)
@@ -186,8 +131,7 @@ class PromptMapper(pl.LightningModule):
             inputs = [[z, c], idx, x_T]
             original_log, _ = self.diffusion.log_images(batch=None, inputs=inputs, N=N, return_inputs=False,
                                                         unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
-            original_sample_key = f"samples_cfg_scale_{unconditional_guidance_scale}" \
-                if unconditional_guidance_scale > 1.0 else "samples"
+            original_sample_key = f"samples_cfg_scale_{unconditional_guidance_scale:.2f}" if unconditional_guidance_scale > 1.0 else "samples"
             log.update({"original_sample": original_log[original_sample_key]})
 
         # c_crossattn = self(image_features, text_features, dscale)

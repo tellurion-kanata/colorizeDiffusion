@@ -92,17 +92,3 @@ class ConditionWrapper(nn.Module):
         if self.use_adm:
             c_dict.update({"c_adm": [gap(z, keepdim=False)]})
         return c_dict
-
-    def get_unconditional_conditioning(self, c, unconditional_guidance_label):
-        if unconditional_guidance_label == "reference":
-            crossattn = c["c_crossattn"][0]
-            uc = {"c_concat": c["c_concat"],
-                  "c_crossattn": [torch.zeros_like(crossattn, device=crossattn.device)]}
-            if self.use_adm:
-                adm = c["c_adm"][0]
-                uc.update({"c_adm": [torch.zeros_like(adm, device=adm.device)]})
-        else:
-            concat = c["c_concat"][0]
-            uc = {"c_concat": [torch.zeros_like(concat, device=concat.device)],
-                  "c_crossattn": c["c_crossnattn"]}
-        return uc

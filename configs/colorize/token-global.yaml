@@ -12,14 +12,12 @@ model:
     channels: 4
     monitor: val/loss_simple_ema
     cond_stage_key: colorize
-    conditioning_key: colorize-adm
+    conditioning_key: colorize
     scale_factor: 0.18215
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel
       params:
-        num_classes: sequential
-        adm_in_channels: 1024
         in_channels: 4
         c_channels: 1
         out_channels: 4
@@ -32,6 +30,7 @@ model:
         use_spatial_transformer: true
         transformer_depth: 1
         context_dim: 1024
+        add_global: true
 
     first_stage_config:
       target: models.autoencoder.VAE
@@ -52,7 +51,6 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        use_adm: true
         drop_rate: 0.5
         clip_config:
           scale_factor: 1.0

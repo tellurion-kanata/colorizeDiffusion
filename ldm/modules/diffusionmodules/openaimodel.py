@@ -469,6 +469,7 @@ class UNetModel(nn.Module):
         use_linear_in_transformer=False,
         adm_in_channels=1024,
         add_only=False,
+        add_global=False,
     ):
         super().__init__()
         print(f"Setting up Latent model: {self.__class__.__name__}.")
@@ -595,7 +596,7 @@ class UNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint, add_only=add_only,
+                                use_checkpoint=use_checkpoint, add_only=add_only, add_global=add_global,
                                 # use_channel_attention=use_channel_attention if level < len(channel_mult) - 2 else False
                             )
                         )
@@ -653,7 +654,7 @@ class UNetModel(nn.Module):
             ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
                             ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
-                            use_checkpoint=use_checkpoint, add_only=add_only,
+                            use_checkpoint=use_checkpoint, add_only=add_only, add_global=add_global,
                         ),
             ResBlock(
                 ch,
@@ -707,8 +708,7 @@ class UNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint,
-                                add_only=add_only,
+                                use_checkpoint=use_checkpoint, add_only=add_only, add_global=add_global,
                             )
                         )
                 if level and i == self.num_res_blocks[level]:

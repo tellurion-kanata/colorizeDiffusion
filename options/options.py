@@ -105,7 +105,7 @@ class Options():
 
         self.parser.add_argument('--target_scale', '-ts', type=float, default=None,
                                  help='Target scale for prompt-based manipulation')
-        self.parser.add_argument('--text', type=str, default=None,
+        self.parser.add_argument('--text', '-txt', type=str, default=None,
                                  help='Text prompt used for prompt-based manipulation')
 
     def dirsetting(self, opt):

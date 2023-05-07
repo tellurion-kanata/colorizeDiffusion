@@ -175,7 +175,8 @@ class ImageLogger(Callback):
     def __init__(self, batch_frequency, save_path, sample_num, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
                   ddim_sample=False, ddim_sample_step=200, guidance_scale=1.0, guidance_label="reference",
-                 save_input=False, use_ema=False, target_scale=None, text=None, resume=False):
+                 save_input=False, use_ema=False, target_scale=None, control=None, target=None, resume=False,
+                 threshold=0.5, sample_original=True):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -199,7 +200,10 @@ class ImageLogger(Callback):
         self.save_input = save_input
         self.openai_norm_keys = ["reference", "conditioning"]
         self.target_scale = target_scale
-        self.text = text
+        self.control = control
+        self.target = target
+        self.threshold = threshold
+        self.sample_original_cond = sample_original
 
     @rank_zero_only
     def log_local(self, images, global_step, current_epoch, batch_idx, img_idx, is_train):
@@ -239,7 +243,6 @@ class ImageLogger(Callback):
             if is_train:
                 pl_module.eval()
 
-            batch['sample'] = is_train
             images, index = pl_module.log_images(
                 batch = batch,
                 N = self.sample_num,
@@ -250,7 +253,11 @@ class ImageLogger(Callback):
                 ddim_steps = self.ddim_sample_step if is_train or self.ddim_sample else None,
                 return_inputs = self.save_input,
                 target_scale = self.target_scale,
-                text = self.text,
+                control = self.control,
+                target = self.target,
+                threshold = self.threshold,
+                sample_original_cond = self.sample_original_cond,
+                is_train = is_train,
             )
 
             for k in images:
@@ -299,7 +306,10 @@ def setup_callbacks(opt, device_num=1, train=False):
         ddim_sample_step = opt.ddim_step,
         save_input       = default(opt, 'save_input', True),
         target_scale     = default(opt, 'target_scale', None),
-        text             = default(opt, 'text', None),
+        control          = default(opt, 'control_prompt', None),
+        target           = default(opt, 'target_prompt', None),
+        sample_original  = not default(opt, 'not_sample_original_cond', False),
+        threshold        = default(opt, 'threshold', 0.5),
     )]
 
     if train:

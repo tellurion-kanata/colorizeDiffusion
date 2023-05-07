@@ -15,7 +15,7 @@ from ldm.modules.diffusionmodules.util import (
     normalization,
     timestep_embedding,
 )
-from ldm.modules.attention import gap, MemoryEfficientAttnBlock, SpatialTransformer
+from ldm.modules.attention import MemoryEfficientAttnBlock, SpatialTransformer
 from ldm.util import exists
 
 # dummy replace

@@ -71,5 +71,5 @@ if __name__ == '__main__':
     )
 
     # model = torch.compile(model)
-    model.init_from_ckpt(opt.load_checkpoint)
+    model.init_from_ckpt(opt.load_checkpoint, ignore_keys=opt.ignore_keys)
     trainer.test(model, dataset)

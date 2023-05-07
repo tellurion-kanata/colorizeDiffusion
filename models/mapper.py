@@ -109,10 +109,10 @@ class PromptMapper(pl.LightningModule):
         opt = optim.AdamW(self.mapper.parameters(), lr=self.lr)
         return opt
 
-    def log_images(self, batch, target_scale=None, N=8, text=None, return_inputs=True,
+    def log_images(self, batch, target_scale=None, N=8, control=None, target=None, return_inputs=True,
                    sample_original_cond=True, unconditional_guidance_scale=1.0, **kwargs):
         out, idx = self.get_input(batch, bs=N, return_first_stage_outputs=True, return_original_cond=True,
-                                  text=text)
+                                  text=target)
         log = {}
         # z, c_concat, image_features, text_features, arg_text_features, x, xrec, xc = out
         z, c_concat, image_features, arg_text_features, x, xrec, xc = out

@@ -45,6 +45,8 @@ class Options():
                                  help='DDIM sampler step')
         self.parser.add_argument('--seed', type=int, default=None,
                                  help='Initialize global seed.')
+        self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
+                                 help="Ignore keys when initialize from checkpoint.")
 
     def modify_options(self):
         if not self.eval:
@@ -59,8 +61,6 @@ class Options():
                                  help='Load training information when resume. (# using lightning resume)')
         self.parser.add_argument('--fitting_model', '-fm', action='store_true',
                                  help='Fit the checkpoint states to the new model.')
-        self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
-                                 help="Ignore keys when initialize from checkpoint.")
 
         # training options
         self.parser.add_argument('--learning_rate', '-lr', default=1e-5, type=float,
@@ -103,10 +103,16 @@ class Options():
         self.parser.add_argument('--save_input', '-si', action='store_true',
                                  help='Save input images during testing')
 
+        self.parser.add_argument('--not_sample_original_cond', '-nso', action='store_true',
+                                 help='Sampling using original conditions')
         self.parser.add_argument('--target_scale', '-ts', type=float, default=None,
                                  help='Target scale for prompt-based manipulation')
-        self.parser.add_argument('--text', '-txt', type=str, default=None,
+        self.parser.add_argument('--control_prompt', '-ctl', type=str, default=None,
+                                 help='Text prompt used to compute the position weight matrix')
+        self.parser.add_argument('--target_prompt', '-txt', type=str, default=None,
                                  help='Text prompt used for prompt-based manipulation')
+        self.parser.add_argument('--threshold', '-thre', type=float, default=0.5,
+                                 help='Threshold used to filter control area')
 
     def dirsetting(self, opt):
         def makedir(paths):

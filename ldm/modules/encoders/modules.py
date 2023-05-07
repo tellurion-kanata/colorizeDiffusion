@@ -65,24 +65,19 @@ def disabled_train(self, mode=True):
 class OpenCLIP(nn.Module):
     def __init__(self,
                  arch="ViT-H-14",
-                 device="cuda",
-                 type='pooled',
                  cache_dir="./pretrained_models",
-                 freeze=True,
-                 layer="last",
-                 use_positional_embedding=True,
+                 **kwargs,
                  ):
         super().__init__()
         pretrained_version = versions[arch]
         model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=pretrained_version,
                                                             cache_dir=cache_dir)
 
-        self.visual = OpenCLIPEncoder(model=model, freeze=freeze, device=device, type=type,
-                                      use_positional_embedding=use_positional_embedding)
-        self.transformer = FrozenOpenCLIPEmbedder(model=model, freeze=freeze, layer=layer, device=device)
+        self.visual = OpenCLIPEncoder(model=model, **kwargs)
+        self.transformer = FrozenOpenCLIPEmbedder(model=model, **kwargs)
         self.logit_scale_exp = model.logit_scale.exp()
 
-    def encode_image(self, img):
+    def encode(self, img):
         return self.visual.encode(img)
 
     def encode_text(self, text):
@@ -95,10 +90,7 @@ class OpenCLIP(nn.Module):
                 v: visual tokens from clip image encoder, shape: (b, n, c)
                 t: text features from clip text encoder (argmax -1), shape: (b, 1, c)
         """
-        t = t.permute(0, 2, 1)
-        proj = torch.bmm(v, t)
-        return proj
-
+        return v @ t.mT
 
 class OpenCLIPEncoder(nn.Module):
     """
@@ -117,6 +109,7 @@ class OpenCLIPEncoder(nn.Module):
                  cache_dir="./pretrained_models",
                  freeze=True,
                  use_positional_embedding=True,
+                 **kwargs,
                  ):
         super().__init__()
         assert type in ["pooled", "tokens"]
@@ -215,7 +208,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         "penultimate"
     ]
     def __init__(self, arch="ViT-bigG-14", version="laion2b_s39b_b160k", device="cuda", max_length=77,
-                 freeze=True, layer="last", model=None):
+                 freeze=True, layer="last", model=None, **kwargs):
         super().__init__()
         assert layer in self.LAYERS
         if model is None:

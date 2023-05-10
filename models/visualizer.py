@@ -1,5 +1,6 @@
 import cv2
 import torch
+import torch.nn.functional as F
 import torchvision.transforms as transforms
 import PIL.Image as Image
 import numpy as np
@@ -20,12 +21,12 @@ def maxmin(x: torch.Tensor, threshold=0.2):
     x = (x - minm) / (maxm - minm)
     return x
 
-path = "H:/networks\pl-models\miniset\latest/reference/1.jpg"
+path = "H:/networks\pl-models\miniset\mapping/reference/1.jpg"
 img = Image.open(path).convert('RGB')
 img = transforms.Resize((224, 224))(img)
 img = transforms.ToTensor()(img)
 x = transforms.Normalize(OPENAI_MEAN, OPENAI_STD)(img).unsqueeze(0)
-text = "the girl's blue eyes"
+text = "the girl's hair"
 
 img = cv2.imread(path)
 height, width = img.shape[:2]
@@ -39,7 +40,8 @@ t = clip.encode_text(text)
 scale = clip.calculate_scale(v, t)
 scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
 scale = torch.nn.functional.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height*width)
-scale = maxmin(scale)
+scale = maxmin(-scale)
+# scale = maxmin(F.softmax(-scale, dim=-1))
 scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
 scale = (scale * 255.).astype(np.uint8)
 heatmap = cv2.applyColorMap(scale, cv2.COLORMAP_JET)

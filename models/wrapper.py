@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from utils import instantiate_from_config
 from ldm.modules.encoders.modules import OpenCLIPEncoder, OpenCLIP
@@ -40,7 +41,7 @@ def maxmin(s: torch.Tensor, threshold=0.5):
     minm = s.min(dim=1, keepdim=True).values
     d = maxm - minm
 
-    s = (s - minm) / d
+    s = (maxm - s) / d
     # return torch.where(s > threshold, 0, 1-s)
     return s
 
@@ -137,40 +138,34 @@ class AdjustLatentDiffusion(LatentDiffusion):
         super().__init__(*args, **kwargs)
         self.type = type
 
-    def adjust_visual(self, v, t, c, s_t, s_c):
+    def manipulation(self, v, target_scale, target, control=None):
         """
             v: visual tokens in shape (b, n, c)
-            t: target text embeddings in shape (b, 1 ,c)
-            c: control text embeddings in shape (b, 1, c)
-            s: position weight matrix in shape (b, n, 1)
+            target: target text embeddings in shape (b, 1 ,c)
+            control: control text embeddings in shape (b, 1, c)
         """
-        return v + t * s_t - c * s_c
-
-    def manipulation(self, v, target_scale, target, control=None, threshold=0.5):
         if exists(control):
             control = [control] * v.shape[0]
             control = self.cond_stage_model.encode_text(control)
-            control_scale = self.cond_stage_model.calculate_scale(v, control)
+            s_c = self.cond_stage_model.calculate_scale(v, control)
         else:
-            control, control_scale = 0, 1
+            control, s_c = 0, 1
+
+        v = v - control * s_c
         target = self.cond_stage_model.encode_text(target)
-        cur_target_scale = self.cond_stage_model.calculate_scale(gap(v), target)
 
         if self.type == "pooled":
-            """
-                Used for the pooled model which adopts the globally-averaged token.
-            """
-            dscale = target_scale - cur_target_scale
+            cur_target_scale = self.cond_stage_model.calculate_scale(gap(v), target)
             print(f"current target scale: {cur_target_scale}")
-            v = self.adjust_visual(v, target, control, dscale, control_scale)
+            s_t = target_scale - cur_target_scale
         else:
-            """
-                Used for the token model, which adopts full tokens and requires spatial information.
-            """
-            dscale = target_scale * control_scale - cur_target_scale
-            # tscale = tscale.gather(1, max)
+            cur_target_scale = self.cond_stage_model.calculate_scale(v, target)
             print(f"current target scale: {gap(cur_target_scale)}")
-            v = self.adjust_visual(v, target, control, dscale, control_scale)
+
+            m = s_c - gap(s_c)
+            s_t = (target_scale + m - cur_target_scale) * F.tanh(maxmin(s_c))
+            # tscale = tscale.gather(1, max)
+        v = v + target * s_t
         return [v]
 
     def log_images(self, batch, target_scale=None, N=8, control=None, target=None, threshold=0.5,
@@ -184,7 +179,7 @@ class AdjustLatentDiffusion(LatentDiffusion):
                                       bs=N)
             z, c = out[:2]
             target = [target] * z.shape[0]
-            adjust_crossattn = self.manipulation(c["c_crossattn"][0], target_scale, target, control, threshold)
+            adjust_crossattn = self.manipulation(c["c_crossattn"][0], target_scale, target, control)
 
             log = {}
             x_T = torch.randn_like(z, device=z.device)

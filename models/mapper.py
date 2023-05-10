@@ -23,7 +23,7 @@ class PromptMapper(pl.LightningModule):
         self.clip = OpenCLIP(**clip_config)
         self.M = nn.Linear(context_dim, context_dim)
         # self.mapper = PromptTransformer(**mapper_config)
-        # self.loss = MappingLoss()
+        self.loss = MappingLoss()
 
     def build_diffusion(self, config):
         self.diffusion = instantiate_from_config(config).eval()

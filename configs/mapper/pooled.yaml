@@ -53,7 +53,6 @@ model:
       target: models.wrapper.ConditionWrapper
       params:
         encoder_type: full
-        drop_rate: 0.5
         clip_config:
           scale_factor: 1.0
           type: pooled

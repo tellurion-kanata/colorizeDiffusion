@@ -606,6 +606,10 @@ class LatentDiffusion(DDPM):
             print(f"setting self.scale_factor to {self.scale_factor}")
             print("### USING STD-RESCALING ###")
 
+    def on_train_epoch_end(self):
+        if hasattr(self.cond_stage_model, "update_drop_rate") and callable(self.cond_stage_model.update_drop_rate):
+            self.cond_stage_model.update_drop_rate()
+
     def register_schedule(self,
                           given_betas=None, beta_schedule="linear", timesteps=1000,
                           linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):

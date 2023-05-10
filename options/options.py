@@ -105,11 +105,11 @@ class Options():
 
         self.parser.add_argument('--not_sample_original_cond', '-nso', action='store_true',
                                  help='Sampling using original conditions')
-        self.parser.add_argument('--target_scale', '-ts', type=float, default=None,
+        self.parser.add_argument('--target_scale', '-ts', type=float, default=[], nargs='*',
                                  help='Target scale for prompt-based manipulation')
-        self.parser.add_argument('--control_prompt', '-ctl', type=str, default=None,
+        self.parser.add_argument('--control_prompt', '-ctl', type=str, default=[], nargs='*',
                                  help='Text prompt used to compute the position weight matrix')
-        self.parser.add_argument('--target_prompt', '-txt', type=str, default=None,
+        self.parser.add_argument('--target_prompt', '-txt', type=str, default=[], nargs='*',
                                  help='Text prompt used for prompt-based manipulation')
         self.parser.add_argument('--threshold', '-thre', type=float, default=0.5,
                                  help='Threshold used to filter control area')

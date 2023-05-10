@@ -106,33 +106,30 @@ class OpenCLIPEncoder(nn.Module):
                  arch="ViT-H-14",
                  device="cuda",
                  type="pooled",
+                 proj=True,
                  cache_dir="./pretrained_models",
                  freeze=True,
                  use_positional_embedding=True,
                  **kwargs,
                  ):
         super().__init__()
-        assert type in ["pooled", "tokens"]
+        assert type in ["cls", "tokens", "full"]
+        self.type = type
         pretrained_version = versions[arch]
         if model is None:
             model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=pretrained_version, cache_dir=os.path.abspath(cache_dir))
             del model.transformer
         self.model = model.visual
+        self.final_proj = proj
 
         if type == "pooled":
             scale_factor = 1.
-            self.output_tokens = False
-        elif type == "tokens":
-            self.output_tokens = True
-        else:
-            raise NotImplementedError()
-
         if use_positional_embedding:
             if scale_factor > 1.:
-                positional_embedding = self.model.positional_embedding[:-1]
+                positional_embedding = self.model.positional_embedding[1:]
                 positional_embedding = self.interpolate_positional_embedding(positional_embedding, scale_factor, "bicubic")
-                class_positional_embedding = self.model.positional_embedding[-1].unsqueeze(0)
-                positional_embedding = torch.cat([positional_embedding, class_positional_embedding], dim=0)
+                class_positional_embedding = self.model.positional_embedding[0].unsqueeze(0)
+                positional_embedding = torch.cat([class_positional_embedding, positional_embedding], dim=0)
             else:
                 positional_embedding = self.model.positional_embedding
             self.positional_embedding = positional_embedding
@@ -188,10 +185,15 @@ class OpenCLIPEncoder(nn.Module):
         x = self.transformer_forward(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
-        pooled, tokens = self.model._global_pool(x)
-        output = tokens if self.output_tokens else pooled.unsqueeze(1)
+        if self.type == "full":
+            output = x
+        else:
+            cls, tokens = self.model._global_pool(x)
+            output = tokens if self.type == "tokens" else cls
         output = self.model.ln_post(output)
-        output = output @ self.model.proj
+
+        if self.final_proj:
+            output = output @ self.model.proj
         return output
 
     def encode(self, img):

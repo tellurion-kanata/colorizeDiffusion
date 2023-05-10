@@ -305,9 +305,9 @@ def setup_callbacks(opt, device_num=1, train=False):
         ddim_sample      = opt.ddim,
         ddim_sample_step = opt.ddim_step,
         save_input       = default(opt, 'save_input', True),
-        target_scale     = default(opt, 'target_scale', None),
-        control          = default(opt, 'control_prompt', None),
-        target           = default(opt, 'target_prompt', None),
+        target_scale     = default(opt, 'target_scale', []),
+        control          = default(opt, 'control_prompt', []),
+        target           = default(opt, 'target_prompt', []),
         sample_original  = not default(opt, 'not_sample_original_cond', False),
         threshold        = default(opt, 'threshold', 0.5),
     )]

@@ -21,26 +21,60 @@ def maxmin(x: torch.Tensor, threshold=0.2):
     x = (x - minm) / (maxm - minm)
     return x
 
+def maxmin2(s: torch.Tensor, threshold=0.5):
+    """
+        The shape of input scales tensor should be (b, n, 1)
+    """
+    assert len(s.shape) == 3
+    ms = gap(s)
+    maxm = s.max(dim=1, keepdim=True).values
+    minm = s.min(dim=1, keepdim=True).values
+    d = maxm - minm
+
+    corr_s = (s - minm) / d
+    corr_mean = (ms - minm) / d
+    return torch.where(corr_s - corr_mean > 0, torch.exp(torch.abs(s-ms) * 0.5), -torch.exp(torch.abs(s-ms)))
+
+def normalize(path):
+    img = Image.open(path).convert('RGB')
+    img = transforms.Resize((224, 224))(img)
+    img = transforms.ToTensor()(img)
+    x = transforms.Normalize(OPENAI_MEAN, OPENAI_STD)(img).unsqueeze(0)
+    return x
+
+# path = "H:/networks/pl-models/miniset/origin/82411909.png"
 path = "H:/networks\pl-models\miniset\mapping/reference/1.jpg"
-img = Image.open(path).convert('RGB')
-img = transforms.Resize((224, 224))(img)
-img = transforms.ToTensor()(img)
-x = transforms.Normalize(OPENAI_MEAN, OPENAI_STD)(img).unsqueeze(0)
-text = "the girl's hair"
+# path1 = "H:/networks/pl-models/generated/2.png"
+# path2 = "H:/networks/pl-models/generated/0.png"
+# text = ["hair", "red hair"]
+text = ["red hair"]
+# x = torch.cat([normalize(path1), normalize(path2)], 0)
+x = normalize(path)
+# text = ["the girl's hair"]
 
 img = cv2.imread(path)
 height, width = img.shape[:2]
 
-clip = OpenCLIP(type="tokens").cuda()
+clip = OpenCLIP(type="full").cuda()
 # clip = OpenCLIP(arch="ViT-bigG-14", type="tokens", device="cpu")
 
 v = clip.encode(x)
-t = clip.encode_text(text)
-# v = v / v.norm(dim=2, keepdim=True)
+# t = clip.encode_text(text)
+t = v[:, 0].unsqueeze(1)
+v = v[:, 1:]
 scale = clip.calculate_scale(v, t)
+# gap_scale = gap(scale)
+# scale = scale - gap_scale
+# scale = torch.where(scale > 0, torch.ones_like(scale), torch.zeros_like(scale))
+# scale = scale[0] - scale[1]
+# print(scale.shape)
+# scale = scale.unsqueeze(0)
+# scale = torch.where(scale - gapdscale > 0, torch.ones_like(scale), torch.zeros_like(scale))
+
 scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
 scale = torch.nn.functional.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height*width)
-scale = maxmin(-scale)
+scale = maxmin(scale)
+
 # scale = maxmin(F.softmax(-scale, dim=-1))
 scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
 scale = (scale * 255.).astype(np.uint8)

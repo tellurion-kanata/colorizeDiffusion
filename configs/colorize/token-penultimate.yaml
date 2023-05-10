@@ -50,11 +50,11 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        drop_rate: 0.5
+        init_dr: 0.8
         clip_config:
-          arch: ViT-bigG-14
           scale_factor: 1.0
           type: tokens
+          proj: false
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']

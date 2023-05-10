@@ -374,7 +374,7 @@ class BasicTransformerBlock(nn.Module):
         "channel": ChannelWiseAttention,
         "channel-xformers":  MemoryEfficientChannelWiseAttention     # custom channel-wise attention
     }
-    def __init__(self, dim, n_heads, d_head, dropout=0., context_dim=None, add_only=False, add_global=False,
+    def __init__(self, dim, n_heads, d_head, dropout=0., context_dim=None, add_only=False,
                  gated_ff=True, checkpoint=True, disable_self_attn=False, use_channel_attention=False):
         super().__init__()
         attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
@@ -386,7 +386,7 @@ class BasicTransformerBlock(nn.Module):
                               context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
 
         self.proj = None
-        if add_only or add_global:
+        if add_only:
             self.proj = nn.Linear(context_dim, n_heads*d_head, bias=False)
         if not add_only:
             attn_mode = attn_mode.replace("softmax", "channel") if use_channel_attention else attn_mode
@@ -407,7 +407,6 @@ class BasicTransformerBlock(nn.Module):
     def _forward(self, x, context=None):
         if exists(self.norm2):
             x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x
-            x = self.proj(gap(context)) + x if exists(self.proj) else x
             x = self.attn2(self.norm2(x), context=context) + x
         else:
             x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x
@@ -425,7 +424,7 @@ class SpatialTransformer(nn.Module):
     Finally, reshape to image
     NEW: use_linear for more efficiency instead of the 1x1 convs
     """
-    def __init__(self, in_channels, n_heads, d_head, add_only=False, add_global=False,
+    def __init__(self, in_channels, n_heads, d_head, add_only=False,
                  depth=1, dropout=0., context_dim=None, disable_self_attn=False,
                  use_linear=False, use_channel_attention=False,
                  use_checkpoint=True):
@@ -447,7 +446,7 @@ class SpatialTransformer(nn.Module):
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim[d],
                                    disable_self_attn=disable_self_attn, use_channel_attention=use_channel_attention,
-                                   add_only=add_only, checkpoint=use_checkpoint, add_global=add_global)
+                                   add_only=add_only, checkpoint=use_checkpoint)
                 for d in range(depth)]
         )
         if not use_linear:

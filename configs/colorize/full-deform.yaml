@@ -30,7 +30,6 @@ model:
         use_spatial_transformer: true
         transformer_depth: 1
         context_dim: 1024
-        add_global: true
 
     first_stage_config:
       target: models.autoencoder.VAE
@@ -51,10 +50,10 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        drop_rate: 0.5
+        init_dr: 0.8
         clip_config:
           scale_factor: 1.0
-          type: tokens
+          type: full
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']

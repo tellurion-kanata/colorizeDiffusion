@@ -50,7 +50,7 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        drop_rate: 0.5
+        init_dr: 0.8
         pool_config:
           target: models.pooling.LatentShuffle
         clip_config:

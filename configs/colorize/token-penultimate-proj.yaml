@@ -29,7 +29,7 @@ model:
         use_checkpoint: true
         use_spatial_transformer: true
         transformer_depth: 1
-        context_dim: 1280
+        context_dim: 1024
 
     first_stage_config:
       target: models.autoencoder.VAE
@@ -55,7 +55,6 @@ model:
           scale_factor: 1.0
           type: tokens
           layer: penultimate
-          proj: false
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']

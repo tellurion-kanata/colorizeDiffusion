@@ -106,6 +106,7 @@ class OpenCLIPEncoder(nn.Module):
                  arch="ViT-H-14",
                  device="cuda",
                  type="pooled",
+                 layer="last",
                  proj=True,
                  cache_dir="./pretrained_models",
                  freeze=True,
@@ -137,6 +138,13 @@ class OpenCLIPEncoder(nn.Module):
         else:
             self.positional_embedding = None
 
+        if layer == "last":
+            self.layer_idx = 0
+        elif layer == "penultimate":
+            self.layer_idx = 1
+        else:
+            raise NotImplementedError()
+
         self.device = device
         if freeze:
             self.freeze()
@@ -157,6 +165,8 @@ class OpenCLIPEncoder(nn.Module):
 
     def transformer_forward(self, x: torch.Tensor, attn_mask = None):
         for i, r in enumerate(self.model.transformer.resblocks):
+            if i == len(self.model.transformer.resblocks) - self.layer_idx:
+                break
             if self.model.transformer.grad_checkpointing and not torch.jit.is_scripting():
                 x = checkpoint(r, x, attn_mask)
             else:

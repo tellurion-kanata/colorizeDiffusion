@@ -54,7 +54,6 @@ model:
         clip_config:
           scale_factor: 1.0
           type: tokens
-          layer: penultimate
           proj: false
 
 dataloader:

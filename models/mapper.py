@@ -1,97 +1,58 @@
 import torch
 import torch.nn as nn
-import xformers
 
 from inspect import isfunction
+from ldm.modules.attention import CrossAttention
+from models.wrapper import gap
 
 
 def exists(val):
     return val is not None
-
-def uniq(arr):
-    return{el: True for el in arr}.keys()
 
 def default(val, d):
     if exists(val):
         return val
     return d() if isfunction(d) else d
 
-class MemoryEfficientCrossAttention(nn.Module):
+
+class NonLinearSelfAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
-    def __init__(self, query_dim, context_dim=None, out_dim=None, heads=8, dim_head=64, dropout=0.0):
+    def __init__(self, dim, out_dim):
         super().__init__()
-        print(f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, context_dim is {context_dim} and using "
-              f"{heads} heads, with {dim_head} dim per head")
-        inner_dim = dim_head * heads
-        context_dim = default(context_dim, query_dim)
-        out_dim = default(out_dim, query_dim)
+        self.scale = dim ** -0.5
+        self.to_out = nn.Linear(dim, out_dim)
 
-        self.heads = heads
-        self.dim_head = dim_head
-
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
-
-        self.to_out = nn.Sequential(nn.Linear(inner_dim, out_dim), nn.Dropout(dropout))
-
-    def forward(self, x, context=None, mask=None):
-        q = self.to_q(x)
-        context = default(context, x)
-        k = self.to_k(context)
-        v = self.to_v(context)
-
-        b, _, _ = q.shape
-        q, k, v = map(
-            lambda t: t.unsqueeze(3)
-            .reshape(b, t.shape[1], self.heads, self.dim_head)
-            .permute(0, 2, 1, 3)
-            .reshape(b * self.heads, t.shape[1], self.dim_head)
-            .contiguous(),
-            (q, k, v),
-        )
-
-        # actually compute the attention, what we cannot get enough of
-        # out = F.scaled_dot_product_attention(q, k, v, attn_mask=None)
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None)
-
-        if exists(mask):
-            raise NotImplementedError
-        out = (
-            out.unsqueeze(0)
-            .reshape(b, self.heads, out.shape[1], self.dim_head)
-            .permute(0, 2, 1, 3)
-            .reshape(b, out.shape[1], self.heads * self.dim_head)
-        )
+    def forward(self, x):
+        attn = torch.einsum("b i c, b j c -> b i j", x, x) * self.scale
+        attn = attn.softmax(dim=-1)
+        out = torch.einsum("b n i, b i c -> b n c", attn, x)
         return self.to_out(out)
 
 
 class Mapper(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
-    def __init__(self, dim, dim_head=64):
+    def __init__(self, dim, layer_num=3):
         super().__init__()
-        heads = dim // dim_head
-        self.pwm_mlp = nn.Sequential(*[
-            nn.Linear(dim*2, dim),
-            nn.SiLU(),
-            nn.Linear(dim, dim),
-            nn.SiLU(),
-            nn.Linear(dim, dim),
-            nn.SiLU(),
-            nn.Linear(dim, dim),
-            nn.SiLU(),
-            nn.Linear(dim, dim*2)
-        ])
+        # self.pwm_attn = NonLinearSelfAttention(dim, dim)
+        self.proj_in = nn.Linear(dim, dim)
+        self.proj_out = nn.Linear(dim, dim)
 
-        self.cxt_attn = MemoryEfficientCrossAttention(dim, dim+1, heads=heads, dim_head=dim_head)
+        # self.reweight = nn.Linear(dim, dim)
+        # self.cxt_attn = CrossAttention(dim, dim+1, heads=1, dim_head=dim)
+
+        self.relu = nn.ReLU()
         self.dim = dim
+
+    def idt_forward(self, v):
+        return self.proj_out(self.act(self.proj_in(v)))
 
     def forward(self, v, t):
         """
             t: [batch_size, 2, dim+1], concatenated original text and target text with scale
         """
-        cls_token = v[:, 0].unsqueeze(1)
-        pwm = self.pwm_mlp(torch.cat([cls_token.repeat(1, v.shape[1]-1, 1), v[:, 1:]], dim=2))
-        pwm_w, pwm_b = torch.chunk(pwm, 2, dim=2)
-        v = cls_token * pwm_w + pwm_b
-        return v
+        x = self.relu(self.proj_in(v)) + 1.
+        # pwm = torch.where(cls_token > 0, vis_token/cls_token, torch.ones_like(vis_token, device=vis_token.device))
+        # x = pwm * self.cxt_attn(x[1:], t)
+        # project back into the original latent space
+        out = self.proj_out(x)
+        return out

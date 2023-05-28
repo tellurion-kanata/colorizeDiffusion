@@ -203,8 +203,9 @@ class AdjustLatentDiffusion(LatentDiffusion):
         sketch, v = c["c_concat"][0], c["c_crossattn"][0]
 
         shifted_v, shifted_t = self.roll_input(v, t)
-        fake_v = self(shifted_v, t, shifted_t)
-        loss, loss_dict = self.loss(x, sketch, fake_v, shifted_v, t, self)
+        # fake_v = self(shifted_v, t, shifted_t)
+        fake_v = self(v, t, shifted_t)
+        loss, loss_dict = self.loss(x, sketch, fake_v, v, t, self)
 
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
@@ -275,7 +276,8 @@ class AdjustLatentDiffusion(LatentDiffusion):
                 z, c = out[:2]
                 v = c["c_crossattn"][0]
                 shift_v, shift_t = self.roll_input(v, t)
-                adjust_v = [self(shift_v, t, shift_t)[:, 1:]]
+                # adjust_v = [self(shift_v, t, shift_t)[:, 1:]]
+                adjust_v = [self(v, t, shift_t)]
             else:
                 assert len(target) == len(target_scale), "Each prompt should have a target scale"
                 out, idx = super().get_input(batch, self.first_stage_key,

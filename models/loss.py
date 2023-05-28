@@ -37,13 +37,15 @@ class MappingLoss(nn.Module):
     #             calculate_scale, diffusion_model, split="train"):
         # b, n, c = text_features.shape
 
-        # t = torch.randint(0, diffusion_model.num_timesteps, (x.shape[0],), device=x.device).long()
-        # noise = torch.randn_like(x)
-        # x_noisy = diffusion_model.q_sample(x_start=x, t=t, noise=noise)
+        t = torch.randint(0, diffusion_model.num_timesteps, (x.shape[0],), device=x.device).long()
+        noise = torch.randn_like(x)
+        x_noisy = diffusion_model.q_sample(x_start=x, t=t, noise=noise)
         # fake = diffusion_model.apply_model(x_noisy, t, {"c_concat": [sketch], "c_crossattn": [fake_crossattn[:, 1:]]})
         # real = diffusion_model.apply_model(x_noisy, t, {"c_concat": [sketch], "c_crossattn": [real_crossattn[:, 1:]]})
         #
-        idt_loss = self.l1_loss(real_crossattn[:, 1:], fake_crossattn)
+        # rec_loss = self.l1_loss(real, fake)
+        inv_loss = self.l1_loss(real_crossattn, fake_crossattn)
+        # idt_loss = self.l1_loss(real_crossattn, diffusion_model.mapper.idt_forward(real_crossattn))
         # cos_loss = self.l1_loss(diffusion_model.cond_stage_model.calculate_scale(real_crossattn, text_features),
         #                         diffusion_model.cond_stage_model.calculate_scale(fake_crossattn, text_features))
 
@@ -55,11 +57,13 @@ class MappingLoss(nn.Module):
         # sin_loss = sine_loss(fake_crossattn, origin_crossattn, text_features)
         # tri_loss = self.trigular_weight * (cos_loss + sin_loss).sum() / (b * n)
 
-        loss = idt_loss
+        loss = inv_loss
         log = {
             "{}/total_loss".format(split): loss.clone().detach().mean(),
             # "{}/cos_loss".format(split): cos_loss.detach().mean(),
-            # "{}/idt".format(split): idt_loss.detach().mean(),
+            # "{}/rec_loss".format(split): rec_loss.detach().mean(),
+            # "{}/idt_loss".format(split): idt_loss.detach().mean(),
+            # "{}/inv_loss".format(split): inv_loss.detach().mean(),
             # "{}/tri_loss".format(split): tri_loss.detach().mean(),
             # "{}/sin_loss".format(split): sin_loss.detach().mean(),
             # "{}/cos_loss".format(split): cos_loss.detach().mean(),

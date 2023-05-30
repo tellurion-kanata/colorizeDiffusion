@@ -31,28 +31,39 @@ class NonLinearSelfAttention(nn.Module):
 
 class Mapper(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
-    def __init__(self, dim, layer_num=3):
+    def __init__(self, dim):
         super().__init__()
-        # self.pwm_attn = NonLinearSelfAttention(dim, dim)
         self.proj_in = nn.Linear(dim, dim)
         self.proj_out = nn.Linear(dim, dim)
 
-        # self.reweight = nn.Linear(dim, dim)
+        self.reweight = nn.Linear(dim, dim)
         # self.cxt_attn = CrossAttention(dim, dim+1, heads=1, dim_head=dim)
 
         self.relu = nn.ReLU()
         self.dim = dim
 
-    def idt_forward(self, v):
-        return self.proj_out(self.act(self.proj_in(v)))
+    def projection_parameters(self):
+        return list(self.proj_in.parameters()) + list(self.proj_out.parameters())
+
+    def mapping_parameters(self):
+        return list(self.reweight.parameters())
+
+    def project_in(self, x):
+        return self.relu(self.proj_in(x)) + 1.
+
+    def project_out(self, x):
+        return self.proj_out(x)
 
     def forward(self, v, t):
         """
             t: [batch_size, 2, dim+1], concatenated original text and target text with scale
         """
         x = self.relu(self.proj_in(v)) + 1.
-        # pwm = torch.where(cls_token > 0, vis_token/cls_token, torch.ones_like(vis_token, device=vis_token.device))
-        # x = pwm * self.cxt_attn(x[1:], t)
+        cls_token = x[:, 0].unsqueeze(1)
+
+        t = self.relu(self.proj_in(t)) + 1.
+        base, target = t.chunk(2, dim=1)
+        x = self.reweight(x/cls_token) * (target - base)
         # project back into the original latent space
         out = self.proj_out(x)
-        return out
+        return v + out

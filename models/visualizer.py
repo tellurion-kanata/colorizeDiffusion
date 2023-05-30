@@ -4,9 +4,15 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 import PIL.Image as Image
 import numpy as np
+import matplotlib.pyplot as plt
 
 from ldm.modules.encoders.modules import OpenCLIP, OPENAI_MEAN, OPENAI_STD
 
+
+white_line = (255, 255, 255)
+black_line = (0, 0, 0)
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 def gap(x: torch.Tensor = None, keepdim=True):
     if len(x.shape) == 4:
         return torch.mean(x, dim=[2, 3], keepdim=keepdim)
@@ -15,25 +21,28 @@ def gap(x: torch.Tensor = None, keepdim=True):
     else:
         raise NotImplementedError('gap input should be 3d or 4d tensors')
 
-def maxmin(x: torch.Tensor, threshold=0.2):
-    maxm = x.max()
-    minm = x.min()
+def maxmin(x):
+    maxm = x.max(dim=1, keepdim=True).values
+    minm = x.min(dim=1, keepdim=True).values
     x = (x - minm) / (maxm - minm)
     return x
 
-def maxmin2(s: torch.Tensor, threshold=0.5):
+def compute_pwm(s: torch.Tensor, threshold=0.5):
     """
         The shape of input scales tensor should be (b, n, 1)
     """
-    assert len(s.shape) == 3
-    ms = gap(s)
+    n = s.shape[1]
     maxm = s.max(dim=1, keepdim=True).values
     minm = s.min(dim=1, keepdim=True).values
     d = maxm - minm
 
-    corr_s = (s - minm) / d
-    corr_mean = (ms - minm) / d
-    return torch.where(corr_s - corr_mean > 0, torch.exp(torch.abs(s-ms) * 0.5), -torch.exp(torch.abs(s-ms)))
+    # dscale_sum = dscale * n
+    return torch.where((s-minm) / d < threshold, torch.ones_like(s) * -1, torch.ones_like(s))
+    # return torch.where(s < 0, torch.ones_like(s) * -1, torch.ones_like(s))
+    # negative_num = count.sum(dim=[1], keepdim=True)
+    # dscale_sum = dscale_sum + dscale * negative_num
+    # dscale_pos = dscale_sum / (n - negative_num)
+    # return torch.where((s-minm)/d < threshold, -dscale, dscale_pos)
 
 def normalize(path):
     img = Image.open(path).convert('RGB')
@@ -42,48 +51,71 @@ def normalize(path):
     x = transforms.Normalize(OPENAI_MEAN, OPENAI_STD)(img).unsqueeze(0)
     return x
 
-# path = "H:/networks/pl-models/miniset/origin/82411909.png"
-path = "H:/networks\pl-models\miniset\mapping/reference/1.jpg"
-# path1 = "H:/networks/pl-models/generated/2.png"
-# path2 = "H:/networks/pl-models/generated/0.png"
-# text = ["hair", "red hair"]
-text = ["white shirt"]
-# x = torch.cat([normalize(path1), normalize(path2)], 0)
-x = normalize(path)
-# text = ["the girl's hair"]
+def show_heatmap(img, scale, height, width, length=16):
+    heatmap = cv2.applyColorMap(scale, cv2.COLORMAP_JET)
+    result = cv2.addWeighted(img, 0.3, heatmap, 0.7, 0)
+    hu = height // length
+    wu = width // length
+    for i in range(16):
+        result[i * hu, :] = black_line
+    for i in range(16):
+        result[:, i * wu] = black_line
+    cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
+    cv2.imshow("heatmap", result)
+    cv2.waitKey()
 
-img = cv2.imread(path)
-height, width = img.shape[:2]
+def interpolate(scale: torch.Tensor, height, width, use_maxmin=True):
+    if use_maxmin:
+        for i, t in enumerate(scale.view(1, 16, 16).round(decimals=2)[0]):
+            print(i, t)
+        # scale = compute_pwm(scale, threshold=0.55)
+        # scale = maxmin(scale)
+        # scale = scale.view(1, height*width, 1)
+    scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
+    scale = torch.nn.functional.interpolate\
+        (scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height * width)
+    scale = compute_pwm(scale, threshold=0.6)
+    scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
+    scale = (scale * 255.).astype(np.uint8)
+    return scale
 
-clip = OpenCLIP(type="full", layer="penultimate").cuda()
-# clip = OpenCLIP(arch="ViT-bigG-14", type="tokens", device="cpu")
+if __name__ == '__main__':
+    path = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
+    # path1 = "H:/networks/pl-models/miniset/origin/70633521.jpg"
+    # path2 = "H:/networks/pl-models/miniset/origin/83162727.jpg"
+    # path1 = "H:/networks/pl-models/generated/6.png"
+    # path2 = "H:/networks/pl-models/generated/7.png"
+    # path3 = "H:/networks/pl-models/generated/2.png"
+    # path4 = "H:/networks/pl-models/generated/3.png"
+    text = ["ground", "the girl's hair"]
+    x = torch.cat([normalize(path)]
+                   # normalize(path2),]
+    #                normalize(path4)]
+                  , 0)
+    # x = normalize(path)
 
-v = clip.encode(x)
-t = clip.encode_text(text)
-# t = v[:, 0].unsqueeze(1)
-print(v.max())
-v = v[:, 1:]
-scale = clip.calculate_scale(v, t)
-print(scale.view(-1, 16, 16, 1))
-# gap_scale = gap(scale)
-# scale = scale - gap_scale
-# scale = torch.where(scale > 0, torch.ones_like(scale), torch.zeros_like(scale))
-# scale = scale[0] - scale[1]
-# print(scale.shape)
-# scale = scale.unsqueeze(0)
-# scale = torch.where(scale - gapdscale > 0, torch.ones_like(scale), torch.zeros_like(scale))
+    img = cv2.imread(path)
+    height, width = img.shape[:2]
 
-scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
-scale = torch.nn.functional.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height*width)
-scale = maxmin(scale)
+    clip = OpenCLIP(type="full").cuda()
+    # clip = OpenCLIP(arch="ViT-bigG-14", type="full", device="cpu")
 
-# scale = maxmin(F.softmax(-scale, dim=-1))
-scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
-scale = (scale * 255.).astype(np.uint8)
-heatmap = cv2.applyColorMap(scale, cv2.COLORMAP_JET)
+    v = clip.encode(x)
+    t = clip.encode_text(text)
+    c = t[1].unsqueeze(0)
+    t = t[0].unsqueeze(0)
 
-result = cv2.addWeighted(img, 0.3, heatmap, 0.7, 0)
+    cls_token = v[:, 0].unsqueeze(1)
+    v = v[:, 1:]
+    scale = clip.calculate_scale(v, t)
+    gscale = clip.calculate_scale(cls_token, t)
 
-cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
-cv2.imshow("heatmap", result)
-cv2.waitKey()
+    # dscale = scale[0] - scale[1]
+    # plt.hist(dscale.cpu().numpy())
+    # plt.show()
+    dscale = scale[0]
+    dscale = dscale.unsqueeze(0)
+
+    # print(gscale[0] - gscale[1])
+    scale = interpolate(dscale, height, width)
+    result = show_heatmap(img, scale, height, width)

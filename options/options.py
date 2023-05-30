@@ -111,8 +111,8 @@ class Options():
                                  help='Text prompt used to compute the position weight matrix')
         self.parser.add_argument('--target_prompt', '-txt', type=str, default=[], nargs='*',
                                  help='Text prompt used for prompt-based manipulation')
-        self.parser.add_argument('--threshold', '-thre', type=float, default=0.5,
-                                 help='Threshold used to filter control area')
+        self.parser.add_argument('--locally', '-loc', action='store_true')
+        self.parser.add_argument('--thresholds', '-thres', type=float, default=[0.5, 0.55, 0.65, 0.95], nargs='*')
 
     def dirsetting(self, opt):
         def makedir(paths):

@@ -105,7 +105,7 @@ class OpenCLIPEncoder(nn.Module):
                  model=None,
                  arch="ViT-H-14",
                  device="cuda",
-                 type="pooled",
+                 type="tokens",
                  layer="last",
                  proj=True,
                  cache_dir="./pretrained_models",
@@ -123,7 +123,7 @@ class OpenCLIPEncoder(nn.Module):
         self.model = model.visual
         self.final_proj = proj
 
-        if type == "pooled":
+        if type == "cls":
             scale_factor = 1.
         if use_positional_embedding:
             if scale_factor > 1.:
@@ -199,7 +199,7 @@ class OpenCLIPEncoder(nn.Module):
             output = x
         else:
             cls, tokens = self.model._global_pool(x)
-            output = tokens if self.type == "tokens" else cls
+            output = tokens if self.type == "tokens" else cls.unsqueeze(1)
         output = self.model.ln_post(output)
 
         if self.final_proj:
@@ -260,6 +260,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.model.text_projection
         x = x / x.norm(dim=1, keepdim=True)
         return x.unsqueeze(1)
+        # return x
 
     def text_transformer_forward(self, x: torch.Tensor, attn_mask = None):
         for i, r in enumerate(self.model.transformer.resblocks):

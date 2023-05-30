@@ -1,6 +1,6 @@
 model:
   base_learning_rate: 1.0e-6
-  target: models.wrapper.AdjustLatentDiffusion
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -12,12 +12,13 @@ model:
     channels: 4
     monitor: val/loss_simple_ema
     cond_stage_key: colorize
-    conditioning_key: colorize
+    conditioning_key: adm
     scale_factor: 0.18215
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel
       params:
+        num_classes: sequential
         in_channels: 4
         c_channels: 1
         out_channels: 4
@@ -27,9 +28,7 @@ model:
         channel_mult: [1, 2, 4, 4]
         num_head_channels: 64
         use_checkpoint: true
-        use_spatial_transformer: true
-        transformer_depth: 1
-        context_dim: 1024
+        adm_in_channels: 1024
 
     first_stage_config:
       target: models.autoencoder.VAE
@@ -50,10 +49,10 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        encoder_type: full
+        init_dr: 0.5
         clip_config:
           scale_factor: 1.0
-          type: full
+          type: cls
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']
@@ -66,6 +65,6 @@ dataloader:
       rotate_range: 45
     load_size: 576
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
-    use_tokens: true
+    refset_key: color
     keep_ratio: true
   shuffle: true

@@ -174,9 +174,9 @@ class ConsoleLogger(Callback):
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, save_path, sample_num, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
-                  ddim_sample=False, ddim_sample_step=200, guidance_scale=1.0, guidance_label="reference",
+                  ddim=False, ddim_step=200, guidance_scale=1.0, guidance_label="reference",
                  save_input=False, use_ema=False, target_scale=None, control=None, target=None, resume=False,
-                 threshold=0.5, sample_original=True):
+                 thresholds=[], sample_original=True, locally=False, **kwargs):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -195,15 +195,16 @@ class ImageLogger(Callback):
         self.guidance_scale = guidance_scale
         self.guidance_label = guidance_label
         self.use_ema = use_ema
-        self.ddim_sample = ddim_sample
-        self.ddim_sample_step = ddim_sample_step
+        self.ddim_sample = ddim
+        self.ddim_sample_step = ddim_step
         self.save_input = save_input
         self.openai_norm_keys = ["reference", "conditioning"]
         self.target_scale = target_scale
         self.control = control
         self.target = target
-        self.threshold = threshold
+        self.locally = locally
         self.sample_original_cond = sample_original
+        self.thresholds = thresholds
 
     @rank_zero_only
     def log_local(self, images, global_step, current_epoch, batch_idx, img_idx, is_train):
@@ -255,9 +256,10 @@ class ImageLogger(Callback):
                 target_scale = self.target_scale,
                 control = self.control,
                 target = self.target,
-                threshold = self.threshold,
+                locally = self.locally,
                 sample_original_cond = self.sample_original_cond,
                 is_train = is_train,
+                thresholds = self.thresholds,
             )
 
             for k in images:
@@ -293,6 +295,7 @@ class ImageLogger(Callback):
 
 @rank_zero_only
 def setup_callbacks(opt, device_num=1, train=False):
+    # logger_config = vars(opt)
     callbacks = [ImageLogger(
         batch_frequency  = default(opt, 'save_freq_step', 1),
         save_path        = opt.sample_path if train else opt.test_path,
@@ -302,14 +305,15 @@ def setup_callbacks(opt, device_num=1, train=False):
         guidance_scale   = opt.guidance_scale,
         guidance_label   = opt.guidance_label,
         use_ema          = opt.use_ema,
-        ddim_sample      = opt.ddim,
-        ddim_sample_step = opt.ddim_step,
+        ddim             = opt.ddim,
+        ddim_step        = opt.ddim_step,
         save_input       = default(opt, 'save_input', True),
         target_scale     = default(opt, 'target_scale', []),
         control          = default(opt, 'control_prompt', []),
         target           = default(opt, 'target_prompt', []),
         sample_original  = not default(opt, 'not_sample_original_cond', False),
-        threshold        = default(opt, 'threshold', 0.5),
+        locally          = default(opt, 'locally', False),
+        thresholds       = default(opt, 'thresholds', [])
     )]
 
     if train:

@@ -319,6 +319,7 @@ class TextDataset(DraftDataset):
         with open(filename, 'r') as file:
             dict = json.load(file)
             text = dict["tag_string"]
+            # tags = dict[""]
             filename = dict["linked_img"]
 
         ske = Image.open(filename).convert('L')

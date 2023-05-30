@@ -1405,10 +1405,9 @@ class DiffusionWrapper(pl.LightningModule):
         self.diffusion_model = instantiate_from_config(diff_model_config)
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'concat-adm'
-                                         'hybrid-adm', 'crossattn-adm', 'colorize', 'concat-adm',
-                                         'colorize-adm']
+                                         'hybrid-adm', 'crossattn-adm', 'colorize', 'concat-adm']
 
-    def forward(self, x, t, c_concat: list=None, c_crossattn: list=None, c_adm=None):
+    def forward(self, x, t, c_concat: list=None, c_crossattn: list=None, c_adm=None, **kwargs):
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
@@ -1427,11 +1426,7 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         elif self.conditioning_key == 'colorize':
             c_concat, c_crossattn = map(lambda t: torch.cat(t, 1), (c_concat, c_crossattn))
-            out = self.diffusion_model(x, t, concat=c_concat, context=c_crossattn)
-        elif self.conditioning_key == 'colorize-adm':
-            c_concat, c_crossattn, c_adm = map(lambda t: torch.cat(t, 1),
-                                               (c_concat, c_crossattn, c_adm))
-            out = self.diffusion_model(x, t, concat=c_concat, context=c_crossattn, y=c_adm)
+            out = self.diffusion_model(x, t, concat=c_concat, context=c_crossattn, **kwargs)
         elif self.conditioning_key == 'hybrid-adm':
             assert c_adm is not None
             xc = torch.cat([x] + c_concat, dim=1)

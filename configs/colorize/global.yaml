@@ -1,8 +1,7 @@
 model:
   base_learning_rate: 1.0e-6
-  target: models.wrapper.AdjustLatentDiffusion
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
-    type: pooled
     linear_start: 0.00085
     linear_end: 0.0120
     num_timesteps_cond: 1
@@ -52,10 +51,9 @@ model:
     cond_stage_config:
       target: models.wrapper.ConditionWrapper
       params:
-        encoder_type: full
         clip_config:
           scale_factor: 1.0
-          type: pooled
+          type: cls
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']
@@ -68,6 +66,6 @@ dataloader:
       rotate_range: 45
     load_size: 576
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
-    use_tokens: true
+    refset_key: color
     keep_ratio: true
   shuffle: true

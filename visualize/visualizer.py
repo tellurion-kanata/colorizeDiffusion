@@ -6,7 +6,7 @@ import PIL.Image as Image
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ldm.modules.encoders.modules import OpenCLIP, OPENAI_MEAN, OPENAI_STD
+from ldm.modules.encoders.modules import OpenCLIP
 
 
 white_line = (255, 255, 255)
@@ -37,19 +37,12 @@ def compute_pwm(s: torch.Tensor, threshold=0.5):
     d = maxm - minm
 
     # dscale_sum = dscale * n
-    return torch.where((s-minm) / d < threshold, torch.ones_like(s) * -1, torch.ones_like(s))
+    return torch.where((s-minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s)).cpu().numpy()
     # return torch.where(s < 0, torch.ones_like(s) * -1, torch.ones_like(s))
     # negative_num = count.sum(dim=[1], keepdim=True)
     # dscale_sum = dscale_sum + dscale * negative_num
     # dscale_pos = dscale_sum / (n - negative_num)
     # return torch.where((s-minm)/d < threshold, -dscale, dscale_pos)
-
-def normalize(path):
-    img = Image.open(path).convert('RGB')
-    img = transforms.Resize((224, 224))(img)
-    img = transforms.ToTensor()(img)
-    x = transforms.Normalize(OPENAI_MEAN, OPENAI_STD)(img).unsqueeze(0)
-    return x
 
 def show_heatmap(img, scale, height, width, length=16):
     heatmap = cv2.applyColorMap(scale, cv2.COLORMAP_JET)
@@ -60,7 +53,7 @@ def show_heatmap(img, scale, height, width, length=16):
         result[i * hu, :] = black_line
     for i in range(16):
         result[:, i * wu] = black_line
-    cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
     cv2.imshow("heatmap", result)
     cv2.waitKey()
 
@@ -69,35 +62,61 @@ def interpolate(scale: torch.Tensor, height, width, use_maxmin=True):
         for i, t in enumerate(scale.view(1, 16, 16).round(decimals=2)[0]):
             print(i, t)
         # scale = compute_pwm(scale, threshold=0.55)
-        # scale = maxmin(scale)
+        scale = maxmin(scale)
         # scale = scale.view(1, height*width, 1)
     scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
     scale = torch.nn.functional.interpolate\
         (scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height * width)
-    scale = compute_pwm(scale, threshold=0.6)
+    # scale = compute_pwm(scale, threshold=0.55)
     scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
     scale = (scale * 255.).astype(np.uint8)
     return scale
 
+def visualize_heatmaps(image, controls, targets, target_scales, thresholds_list, height, width, locally=False):
+    # the image here is for reference
+
+    v = model.get_tokens(image)
+    cls_token = v[:, 0].unsqueeze(0)
+    v = v[:, 1:]
+    for control, target, target_scale, thresholds in zip(controls, targets, target_scales, thresholds_list):
+        scale = model.get_projections(v, control)
+        scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
+        scale = torch.nn.functional.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height * width)
+
+        # calculate heatmaps
+        for threshold in thresholds:
+            heatmap = model.get_heatmap(scale, threshold=threshold)
+            heatmap = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
+            heatmap = (scale * 255.).astype(np.uint8)
+
+        # update image tokens
+        control_scale = model.cond_stage_model.calculate_scale(cls_token, c)
+        cur_target_scale = model.cond_stage_model.calculate_scale(cls_token, t)
+        dscale = target_scale - cur_target_scale
+        print(f"current global target scale: {cur_target_scale}, global control scale: {control_scale}")
+        v = model.manipulate_step(v, target, control, target_scale, dscale, locally, thresholds)
+
+
 if __name__ == '__main__':
-    path = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
+    # path = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
     # path1 = "H:/networks/pl-models/miniset/origin/70633521.jpg"
     # path2 = "H:/networks/pl-models/miniset/origin/83162727.jpg"
-    # path1 = "H:/networks/pl-models/generated/6.png"
-    # path2 = "H:/networks/pl-models/generated/7.png"
-    # path3 = "H:/networks/pl-models/generated/2.png"
+    path1 = "H:/networks/pl-models/generated/6.png"
+    path2 = "H:/networks/pl-models/generated/7.png"
+    path3 = "H:/networks/pl-models/generated/5.png"
     # path4 = "H:/networks/pl-models/generated/3.png"
-    text = ["ground", "the girl's hair"]
-    x = torch.cat([normalize(path)]
-                   # normalize(path2),]
+    text = ["the girl's red eyes", "the girl's hair"]
+    clip = OpenCLIP(type="full").cuda()
+    x = torch.cat([clip.preprocess(Image.open(path1)),
+                   clip.preprocess(Image.open(path2)),
+                   clip.preprocess(Image.open(path3))]
     #                normalize(path4)]
                   , 0)
     # x = normalize(path)
 
-    img = cv2.imread(path)
+    img = cv2.imread(path1)
     height, width = img.shape[:2]
 
-    clip = OpenCLIP(type="full").cuda()
     # clip = OpenCLIP(arch="ViT-bigG-14", type="full", device="cpu")
 
     v = clip.encode(x)
@@ -112,10 +131,14 @@ if __name__ == '__main__':
 
     # dscale = scale[0] - scale[1]
     # plt.hist(dscale.cpu().numpy())
+
+    # gscale = gscale[0] - gscale[1]
+    # plt.title(f"global dscale: {gscale[0].round(decimals=2).cpu().numpy()}", fontsize=18)
+    # plt.ylabel("token number", fontsize=18)
+    # plt.xlabel("local dscale", fontsize=18)
     # plt.show()
     dscale = scale[0]
-    dscale = dscale.unsqueeze(0)
 
-    # print(gscale[0] - gscale[1])
+    dscale = dscale.unsqueeze(0)
     scale = interpolate(dscale, height, width)
     result = show_heatmap(img, scale, height, width)

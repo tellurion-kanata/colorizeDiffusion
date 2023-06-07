@@ -1,4 +1,5 @@
 import math
+import torchvision.transforms as transforms
 
 import torch
 import torch.nn as nn
@@ -11,8 +12,6 @@ versions = {
     "ViT-bigG-14": "laion2b_s39b_b160k",
     "ViT-H-14": "laion2b_s32b_b79k"
 }
-
-OPENAI_MEAN, OPENAI_STD = (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)
 
 
 class AbstractEncoder(nn.Module):
@@ -76,6 +75,21 @@ class OpenCLIP(nn.Module):
         self.visual = OpenCLIPEncoder(model=model, **kwargs)
         self.transformer = FrozenOpenCLIPEmbedder(model=model, **kwargs)
         self.logit_scale_exp = model.logit_scale.exp()
+        self.openai_std = (0.48145466, 0.4578275, 0.40821073)
+        self.openai_mean = (0.26862954, 0.26130258, 0.27577711)
+
+    def preprocess(self, img, resolution=224):
+        img = transforms.Resize(resolution)(img)
+        img = transforms.ToTensor()(img)
+        img = transforms.Normalize(self.openai_mean, self.openai_std)(img)
+        return img.unsqueeze(0)
+
+    def adjust_scale_factor(self, resolution, trained_image_size=512):
+        if self.visual.type != "cls":
+            scale_factor = resolution / trained_image_size
+            if scale_factor != self.visual.scale_factor:
+                self.visual.scale_factor = scale_factor
+                self.visual.adjust_positional_embedding(scale_factor)
 
     def encode(self, img):
         return self.visual.encode(img)
@@ -123,20 +137,15 @@ class OpenCLIPEncoder(nn.Module):
         self.model = model.visual
         self.final_proj = proj
 
+        self.scale_factor = scale_factor
         if type == "cls":
             scale_factor = 1.
         if use_positional_embedding:
-            if scale_factor > 1.:
-                positional_embedding = self.model.positional_embedding[1:]
-                positional_embedding = self.interpolate_positional_embedding(positional_embedding, scale_factor, "bicubic")
-                class_positional_embedding = self.model.positional_embedding[0].unsqueeze(0)
-                positional_embedding = torch.cat([class_positional_embedding, positional_embedding], dim=0)
-            else:
-                positional_embedding = self.model.positional_embedding
-            self.positional_embedding = positional_embedding
+            self.adjust_positional_embedding(scale_factor)
             print("Adopting positional embedding in Vision Transformer.")
         else:
             self.positional_embedding = None
+
 
         if layer == "last":
             self.layer_idx = 0
@@ -172,6 +181,16 @@ class OpenCLIPEncoder(nn.Module):
             else:
                 x = r(x, attn_mask=attn_mask)
         return x
+
+    def adjust_positional_embedding(self, scale_factor):
+        if scale_factor > 1:
+            positional_embedding = self.model.positional_embedding[1:]
+            positional_embedding = self.interpolate_positional_embedding(positional_embedding, scale_factor, "bicubic")
+            class_positional_embedding = self.model.positional_embedding[0].unsqueeze(0)
+            positional_embedding = torch.cat([class_positional_embedding, positional_embedding], dim=0)
+        else:
+            positional_embedding = self.model.positional_embedding
+        self.positional_embedding = positional_embedding
 
     def forward(self, x: torch.Tensor):
 

@@ -174,7 +174,7 @@ class ConsoleLogger(Callback):
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, save_path, sample_num, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
-                  ddim=False, ddim_step=200, guidance_scale=1.0, guidance_label="reference",
+                  ddpm=False, ddim_step=200, guidance_scale=1.0, guidance_label="reference",
                  save_input=False, use_ema=False, target_scale=None, control=None, target=None, resume=False,
                  thresholds=[], sample_original=True, locally=False, **kwargs):
         super().__init__()
@@ -195,7 +195,7 @@ class ImageLogger(Callback):
         self.guidance_scale = guidance_scale
         self.guidance_label = guidance_label
         self.use_ema = use_ema
-        self.ddim_sample = ddim
+        self.ddim_sample = not ddpm
         self.ddim_sample_step = ddim_step
         self.save_input = save_input
         self.openai_norm_keys = ["reference", "conditioning"]
@@ -305,7 +305,7 @@ def setup_callbacks(opt, device_num=1, train=False):
         guidance_scale   = opt.guidance_scale,
         guidance_label   = opt.guidance_label,
         use_ema          = opt.use_ema,
-        ddim             = opt.ddim,
+        ddpm             = opt.ddpm,
         ddim_step        = opt.ddim_step,
         save_input       = default(opt, 'save_input', True),
         target_scale     = default(opt, 'target_scale', []),

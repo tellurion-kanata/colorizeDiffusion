@@ -39,7 +39,7 @@ class Options():
                                  help='Label used for unconditional guidance.')
         self.parser.add_argument('--use_ema', action='store_true',
                                  help='Use ema weights during sampling.')
-        self.parser.add_argument('--ddim', action='store_true',
+        self.parser.add_argument('--ddpm', action='store_true',
                                  help='Use DDIM sapmler during sampling.')
         self.parser.add_argument('--ddim_step', type=int, default=200,
                                  help='DDIM sampler step')

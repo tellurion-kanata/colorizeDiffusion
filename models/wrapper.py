@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pytorch_lightning as pl
 
 from utils import instantiate_from_config
 from ldm.modules.encoders.modules import OpenCLIPEncoder, OpenCLIP
@@ -111,39 +112,14 @@ class ConditionWrapper(nn.Module):
         return c_dict
 
 
+import numpy as np
 class AdjustLatentDiffusion(LatentDiffusion):
     def __init__(self, type="tokens", *args, **kwargs):
         assert type in ["tokens", "global"]
         super().__init__(*args, **kwargs)
         self.type = type
 
-    def get_input(self, batch, return_first_stage_outputs=False, text=None,
-                  return_original_cond=False, bs=None, return_x=False, **kwargs):
-        if bs:
-            for k in batch:
-                batch[k] = batch[k][:bs]
-
-        x = batch["color"]
-        ref = batch["reference"]
-        s = batch["sketch"]
-        idx = batch["index"]
-        text = batch["text"] if not exists(text) else [text] * x.shape[0]
-
-        z = self.get_first_stage_encoding(self.encode_first_stage(x)).detach()
-        c = self.get_learned_conditioning({"sketch": s, "reference": ref})
-        t = self.cond_stage_model.encode_text(text)
-
-        out = [z, c]
-        if return_first_stage_outputs:
-            xrec = self.decode_first_stage(z)
-            out.extend([x, xrec])
-        if return_x:
-            out.extend([x])
-        if return_original_cond:
-            out.append({"sketch": s, "reference": ref})
-        return out, idx, t
-
-    def compute_pwm(self, s: torch.Tensor, dscale: torch.Tensor, ratio=2, thresholds=[0.5, 0.6, 0.7, 0.95]):
+    def compute_pwm(self, s: torch.Tensor, dscale: torch.Tensor, ratio=2, thresholds=[[0.5, 0.55, 0.65, 0.95]]):
         """
             The shape of input scales tensor should be (b, n, 1)
         """
@@ -153,7 +129,7 @@ class AdjustLatentDiffusion(LatentDiffusion):
         d = maxm - minm
 
         maxmin = (s - minm) / d
-        filter = torch.where(maxmin < thresholds[0], 1, 0)
+        filter = torch.where(maxmin <= thresholds[0], 1, 0)
 
         adjust_scale = torch.where(maxmin <= thresholds[0],
                                    -dscale * ratio,
@@ -167,50 +143,55 @@ class AdjustLatentDiffusion(LatentDiffusion):
         adjust_scale = torch.where(maxmin > thresholds[3], dscale, adjust_scale)
         return adjust_scale, filter
 
-    def manipulate(self, v, target_scale, target, control=None, locally=False, thresholds=[]):
+    def manipulate_step(self, v, t, c, target_scale, dscale=None, locally=False, thresholds=[]):
+        if self.type == "global":
+            if c != "None":
+                c = [c] * v.shape[0]
+                c = self.cond_stage_model.encode_text(c)
+                # s_c = self.cond_stage_model.calculate_scale(v, c)
+                # v = v - s_c * c
+
+            # adjust target prompts
+            t = [t] * v.shape[0]
+            t = self.cond_stage_model.encode_text(t)
+            v = v + target_scale * (t - c)
+        else:
+            c = [c] * v.shape[0]
+            t = [t] * v.shape[0]
+            c = self.cond_stage_model.encode_text(c)
+            t = self.cond_stage_model.encode_text(t)
+            c_map = self.cond_stage_model.calculate_scale(v, c)
+
+            pwm, base = self.compute_pwm(c_map, dscale, thresholds=thresholds)
+            base = base if locally else 1
+            v = v + (pwm + base * c_map) * (t - c)
+        return [v]
+
+    def manipulate(self, v, target, target_scales, control=None, locally=False, thresholds_list=[]):
         """
             v: visual tokens in shape (b, n, c)
             target: target text embeddings in shape (b, 1 ,c)
             control: control text embeddings in shape (b, 1, c)
         """
         if self.type == "global":
-            for t, c, s_t in zip(target, control, target_scale):
-                # remove control prompts
-                if c != "None":
-                    c = [c] * v.shape[0]
-                    c = self.cond_stage_model.encode_text(c)
-                    # s_c = self.cond_stage_model.calculate_scale(v, c)
-                    # v = v - s_c * c
-
-                # adjust target prompts
-                t = [t] * v.shape[0]
-                t = self.cond_stage_model.encode_text(t)
-                # cur_target_scale = self.cond_stage_model.calculate_scale(v, t)
-                # print(f"current target scale: {cur_target_scale}")
-                v = v + s_t * (t - c)
+            for t, c, s_t in zip(target, control, target_scales):
+                cur_target_scale = self.cond_stage_model.calculate_scale(v, t)
+                print(f"current target scale: {cur_target_scale}")
+                v = self.manipulate_step(v, t, c, s_t)
         else:
-            # zero shot spatial manipulation requires corresponding control prompts
-            # assert len(target) == len(control)
             cls_token = v[:, 0].unsqueeze(1)
             v = v[:, 1:]
-            for t, c, s_t in zip(target, control, target_scale):
-                c = [c] * v.shape[0]
-                t = [t] * v.shape[0]
-                c = self.cond_stage_model.encode_text(c)
-                t = self.cond_stage_model.encode_text(t)
-
-                c_map = self.cond_stage_model.calculate_scale(v, c)
+            for t, c, s_t, thresholds in zip(target, control, target_scales, thresholds_list):
                 control_scale = self.cond_stage_model.calculate_scale(cls_token, c)
                 cur_target_scale = self.cond_stage_model.calculate_scale(cls_token, t)
+                dscale = s_t - cur_target_scale
                 print(f"current global target scale: {cur_target_scale}, global control scale: {control_scale}")
 
-                dscale = s_t - cur_target_scale
-                pwm, base = self.compute_pwm(c_map, dscale, thresholds=thresholds)
-                base = base if locally else 1
-                v = v + (pwm + base * c_map) * (t-c)
+                v = self.manipulate_step(v, t, c, s_t, dscale, locally, thresholds)
         return [v]
 
-    def log_images(self, batch, N=8, control=[], target=[], target_scale=[], thresholds=[0.5, 0.55, 0.65, 0.95], is_train=False,
+
+    def log_images(self, batch, N=8, control=[], target=[], target_scale=[], thresholds=[[0.5, 0.55, 0.65, 0.95]], is_train=False,
                    return_inputs=True, sample_original_cond=True, unconditional_guidance_scale=1.0, locally=False, **kwargs):
         def sample(inputs, sample_function):
             original_log, _ = sample_function(batch=None, inputs=inputs, N=N, return_inputs=return_inputs,
@@ -249,3 +230,57 @@ class AdjustLatentDiffusion(LatentDiffusion):
         else:
             return super().log_images(batch=batch, N=N, return_inputs=return_inputs,
                                       unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
+
+    """
+        The following part is for User interface. 
+    """
+    def get_heatmap(self, s: torch.Tensor, threshold: float):
+        """
+            The shape of input scales tensor should be (b, n, 1)
+        """
+        maxm = s.max(dim=1, keepdim=True).values
+        minm = s.min(dim=1, keepdim=True).values
+        d = maxm - minm
+        return torch.where((s - minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s))
+
+    def get_tokens(self, image):
+        return self.cond_stage_model.encode(self.cond_stage_model.preprocess(image))
+
+    def get_projections(self, v, t):
+        t = self.cond_stage_model.encode_text([t])
+        return self.cond_stage_model.calculate_scale(v, t)
+
+    """
+        User interactive function.
+    """
+    def generate_image(self, sketch, reference, unconditional_guidance_scale, resolution,
+                       ddim_steps, ddim_eta, use_ema_scope, locally, control=[], target=[],
+                       thresholds_list=[], target_scales=[], seed=None):
+        # set global seed for generation
+        pl.seed_everything(seed)
+
+        # modify positional embedding according to image resolution
+        self.cond_stage_model.adjust_scale_factor(resolution)
+        v = self.cond_stage_model.encode(self.cond_stage_model.preprocess(reference, resolution=resolution/512*224))
+
+        # manipulate reference image embeddings
+        if len(target) > 0:
+            assert len(target) == len(target_scales)
+            v = self.manipulate(v, target, target_scales, control, locally, thresholds_list)
+        elif self.type == "tokens":
+            v = v[:, 1:]
+
+        # generate images
+        c = {"c_concat": sketch, "c_crossattn": v}
+        inputs = [None, c, None]
+        logs, _ = super().log_images(inputs=inputs, return_inputs=False, ddim_steps=ddim_steps, ddim_eta=ddim_eta,
+                                     use_ema_scope=use_ema_scope)
+        sample_key = f"samples_cfg_scale_{unconditional_guidance_scale:.2f}" if unconditional_guidance_scale > 1.0 else "samples"
+
+        # convert to RGB format
+        img = logs[sample_key][0]
+        img = (img + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+        img = img.permute(1, 2, 0).squeeze(-1)
+        img = img.numpy()
+        img = (img * 255).astype(np.uint8)
+        return img

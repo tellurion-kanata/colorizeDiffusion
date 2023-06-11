@@ -1246,13 +1246,13 @@ class LatentDiffusion(DDPM):
                 if ismap(xc):
                     log["original_conditioning"] = self.to_rgb(xc)
         else:
-            z, c = out
+            _, c = out
 
-        N = min(z.shape[0], N)
-        n_row = min(z.shape[0], n_row)
+        b, _, h, w = c["c_concat"][0].shape
+        N = min(b, N)
+        n_row = min(b, n_row)
 
         if self.cond_stage_key == "colorize":
-            h, w = c["c_concat"][0].shape[2:]
             shape = (self.channels, h // self.resolution_scale_factor, w // self.resolution_scale_factor)
         else:
             shape = (self.channels, self.image_size, self.image_size)

@@ -79,7 +79,7 @@ class OpenCLIP(nn.Module):
         self.openai_mean = (0.26862954, 0.26130258, 0.27577711)
 
     def preprocess(self, img, resolution=224):
-        img = transforms.Resize(resolution)(img)
+        img = transforms.Resize((resolution, resolution))(img)
         img = transforms.ToTensor()(img)
         img = transforms.Normalize(self.openai_mean, self.openai_std)(img)
         return img.unsqueeze(0)

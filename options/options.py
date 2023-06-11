@@ -1,8 +1,32 @@
 import os
 import argparse
 import shutil
+import json
 
 from pytorch_lightning.utilities import rank_zero_only
+
+def list_of_bools(value):
+    try:
+        value = json.loads(value)
+        if not isinstance(value, list):
+            raise ValueError
+        if not all(isinstance(x, bool) for x in value):
+            raise ValueError
+        return value
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not a valid list of bools")
+
+def list_of_floats(value):
+    try:
+        value = json.loads(value)
+        if not isinstance(value, list):
+            raise ValueError
+        for sub_list in value:
+            if not all(isinstance(x, float) for x in sub_list):
+                raise ValueError
+        return value
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not a valid list of list of floats")
 
 class Options():
     def __init__(self, eval=False):
@@ -29,7 +53,7 @@ class Options():
                                  help='Checkpoint to load. Default is \'latest.ckpt\' under the checkpoint directory.')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
-        self.parser.add_argument('--save_path', '-s', type=str, default='./checkpoints',
+        self.parser.add_argument('--save_path', type=str, default='./checkpoints',
                                  help='Trained models save path')
         self.parser.add_argument('--config_file', '-cfg', type=str, default=None,
                                  help='Model config file path. Default path is "[ckpt_path]/model_config.yaml" when testing')
@@ -43,7 +67,7 @@ class Options():
                                  help='Use DDIM sapmler during sampling.')
         self.parser.add_argument('--ddim_step', type=int, default=200,
                                  help='DDIM sampler step')
-        self.parser.add_argument('--seed', type=int, default=None,
+        self.parser.add_argument('--seed', '-s', type=int, default=None,
                                  help='Initialize global seed.')
         self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
                                  help="Ignore keys when initialize from checkpoint.")
@@ -111,8 +135,8 @@ class Options():
                                  help='Text prompt used to compute the position weight matrix')
         self.parser.add_argument('--target_prompt', '-txt', type=str, default=[], nargs='*',
                                  help='Text prompt used for prompt-based manipulation')
-        self.parser.add_argument('--locally', '-loc', action='store_true')
-        self.parser.add_argument('--thresholds', '-thres', type=float, default=[0.5, 0.55, 0.65, 0.95], nargs='*')
+        self.parser.add_argument('--enhance', '-e', type=list_of_bools, default="[false]")
+        self.parser.add_argument('--thresholds', '-thres', type=list_of_floats, default="[[0.5, 0.55, 0.65, 0.95]]")
 
     def dirsetting(self, opt):
         def makedir(paths):

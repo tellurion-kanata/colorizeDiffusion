@@ -176,7 +176,7 @@ class ImageLogger(Callback):
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
                   ddpm=False, ddim_step=200, guidance_scale=1.0, guidance_label="reference",
                  save_input=False, use_ema=False, target_scale=None, control=None, target=None, resume=False,
-                 thresholds=[], sample_original=True, locally=False, **kwargs):
+                 thresholds=[], sample_original=True, enhance=[], **kwargs):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -202,7 +202,7 @@ class ImageLogger(Callback):
         self.target_scale = target_scale
         self.control = control
         self.target = target
-        self.locally = locally
+        self.enhance = enhance
         self.sample_original_cond = sample_original
         self.thresholds = thresholds
 
@@ -256,7 +256,7 @@ class ImageLogger(Callback):
                 target_scale = self.target_scale,
                 control = self.control,
                 target = self.target,
-                locally = self.locally,
+                enhance = self.enhance,
                 sample_original_cond = self.sample_original_cond,
                 is_train = is_train,
                 thresholds = self.thresholds,
@@ -312,7 +312,7 @@ def setup_callbacks(opt, device_num=1, train=False):
         control          = default(opt, 'control_prompt', []),
         target           = default(opt, 'target_prompt', []),
         sample_original  = not default(opt, 'not_sample_original_cond', False),
-        locally          = default(opt, 'locally', False),
+        enhance          = default(opt, 'enhance', []),
         thresholds       = default(opt, 'thresholds', [])
     )]
 

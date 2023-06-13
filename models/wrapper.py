@@ -90,6 +90,9 @@ class ConditionWrapper(nn.Module):
     def encode_text(self, text):
         return self.encoder.encode_text(text)
 
+    def encode_img(self, img, resolution):
+        return self.encoder.encode(self.encoder.preprocess(img, resolution=resolution))
+
     def calculate_scale(self, v, t):
         return self.encoder.calculate_scale(v, t)
 
@@ -134,7 +137,6 @@ class AdjustLatentDiffusion(LatentDiffusion):
         d = maxm - minm
 
         maxmin = (s - minm) / d
-        filter = torch.where(maxmin <= thresholds[0], 1, 0)
 
         adjust_scale = torch.where(maxmin <= thresholds[0],
                                    -dscale * ratio,
@@ -146,7 +148,7 @@ class AdjustLatentDiffusion(LatentDiffusion):
                                    0.5 * dscale + 0.5 * dscale * (maxmin - thresholds[2]) / (thresholds[3] - thresholds[2]),
                                    adjust_scale)
         adjust_scale = torch.where(maxmin > thresholds[3], dscale, adjust_scale)
-        return adjust_scale, filter
+        return adjust_scale
 
     def manipulate_step(self, v, t, target_scale, c=None, enhance=False, thresholds=[]):
         if self.type == "global":
@@ -179,12 +181,10 @@ class AdjustLatentDiffusion(LatentDiffusion):
             print(f"current global target scale: {cur_target_scale}, global control scale: {control_scale}")
 
             c_map = self.cond_stage_model.calculate_scale(v, c)
-            pwm, base = self.compute_pwm(c_map, dscale, thresholds=thresholds)
-            base = 1 if enhance else base
+            pwm = self.compute_pwm(c_map, dscale, thresholds=thresholds)
+            base = 1 if enhance else 0
             v = v + (pwm + base * c_map) * (t - c)
 
-            if self.type == "full":
-                cls_token = cls_token + dscale * (t - c)
             v = torch.cat([cls_token, v], dim=1)
         return v
 
@@ -254,10 +254,10 @@ class AdjustLatentDiffusion(LatentDiffusion):
         maxm = s.max(dim=1, keepdim=True).values
         minm = s.min(dim=1, keepdim=True).values
         d = maxm - minm
-        return torch.where((s - minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s))
+        return torch.where((s - minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s) * 0.25)
 
-    def get_tokens(self, image):
-        return self.cond_stage_model.encode(self.cond_stage_model.preprocess(image))
+    def get_tokens(self, image, resolution=224):
+        return self.cond_stage_model.encode_img(image, resolution)
 
     def get_projections(self, v, t):
         return self.cond_stage_model.calculate_scale(v, t)
@@ -272,8 +272,8 @@ class AdjustLatentDiffusion(LatentDiffusion):
         pl.seed_everything(seed)
 
         # modify positional embedding according to image resolution
-        self.cond_stage_model.adjust_scale_factor(resolution)
-        v = self.cond_stage_model.encode(self.cond_stage_model.preprocess(reference, resolution=resolution/512*224))
+        self.cond_stage_model.encoder.adjust_scale_factor(resolution)
+        v = self.cond_stage_model.encode_img(reference, resolution/512*224)
 
         # manipulate reference image embeddings
         if len(target) > 0:

@@ -37,7 +37,7 @@ def compute_pwm(s: torch.Tensor, threshold=0.5):
     d = maxm - minm
 
     # dscale_sum = dscale * n
-    return torch.where((s-minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s))
+    return torch.where((s-minm) / d < threshold, torch.zeros_like(s), torch.ones_like(s) * 0.25)
     # return torch.where(s < 0, torch.ones_like(s) * -1, torch.ones_like(s))
     # negative_num = count.sum(dim=[1], keepdim=True)
     # dscale_sum = dscale_sum + dscale * negative_num
@@ -53,7 +53,7 @@ def show_heatmap(img, scale, height, width, length=16):
         result[i * hu, :] = black_line
     for i in range(16):
         result[:, i * wu] = black_line
-    # cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("heatmap", cv2.WINDOW_NORMAL)
     cv2.imshow("heatmap", result)
     cv2.waitKey()
 
@@ -62,16 +62,19 @@ def interpolate(scale: torch.Tensor, height, width, use_maxmin=True):
         for i, t in enumerate(scale.view(1, 16, 16).round(decimals=2)[0]):
             print(i, t)
         # scale = compute_pwm(scale, threshold=0.55)
-        # scale = maxmin(scale)
+        scale = maxmin(scale)
         # scale = scale.view(1, height*width, 1)
     scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
     scale = torch.nn.functional.interpolate\
         (scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height * width)
-    scale = compute_pwm(scale, threshold=0.6)
-    print(scale)
-    scale = scale.view(1, height, width).permute(1, 2, 0).cpu().numpy()
-    scale = (scale * 255.).astype(np.uint8)
-    return scale
+    # heatmap = torch.zeros_like(scale)
+    heatmap = scale
+    # for ts in [0.5, 0.55, 0.65, 0.95]:
+    #     heatmap += compute_pwm(scale, threshold=ts)
+
+    heatmap = heatmap.view(1, height, width).permute(1, 2, 0).cpu().numpy()
+    heatmap = (heatmap * 255.).astype(np.uint8)
+    return heatmap
 
 def visualize_heatmaps(image, controls, targets, target_scales, thresholds_list, height, width, locally=False):
     # the image here is for reference
@@ -99,14 +102,14 @@ def visualize_heatmaps(image, controls, targets, target_scales, thresholds_list,
     return all_heatmaps
 
 if __name__ == '__main__':
-    path1 = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
-    # path1 = "H:/networks/pl-models/miniset/origin/70633521.jpg"
+    # path1 = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
+    # path1 = "H:/networks/pl-models/miniset/latest/reference/16.jpg"
     # path2 = "H:/networks/pl-models/miniset/origin/83162727.jpg"
-    # path1 = "H:/networks/pl-models/generated/6.png"
+    path1 = "H:/networks/pl-models/generated/6.png"
     path2 = "H:/networks/pl-models/generated/7.png"
     path3 = "H:/networks/pl-models/generated/5.png"
     # path4 = "H:/networks/pl-models/generated/3.png"
-    text = ["the girl's hair", "the girl's hair"]
+    text = ["except the girl's red eyes", "the girl's hair"]
     clip = OpenCLIP(type="full").cuda()
     x = torch.cat([clip.preprocess(Image.open(path1)),
                    clip.preprocess(Image.open(path2)),
@@ -130,15 +133,15 @@ if __name__ == '__main__':
     scale = clip.calculate_scale(v, t)
     gscale = clip.calculate_scale(cls_token, t)
 
-    # dscale = scale[0] - scale[1]
-    # plt.hist(dscale.cpu().numpy())
+    dscale = scale[0] - scale[1]
+    plt.hist(dscale.cpu().numpy())
 
-    # gscale = gscale[0] - gscale[1]
-    # plt.title(f"global dscale: {gscale[0].round(decimals=2).cpu().numpy()}", fontsize=18)
-    # plt.ylabel("token number", fontsize=18)
-    # plt.xlabel("local dscale", fontsize=18)
-    # plt.show()
-    dscale = scale[0]
+    gscale = gscale[0] - gscale[1]
+    plt.title(f"global dscale: {gscale[0].round(decimals=2).cpu().numpy()}", fontsize=18)
+    plt.ylabel("token number", fontsize=18)
+    plt.xlabel("local dscale", fontsize=18)
+    plt.show()
+    # dscale = scale[0]
 
     dscale = dscale.unsqueeze(0)
     scale = interpolate(dscale, height, width)

@@ -146,7 +146,6 @@ class OpenCLIPEncoder(nn.Module):
         else:
             self.positional_embedding = None
 
-
         if layer == "last":
             self.layer_idx = 0
         elif layer == "penultimate":

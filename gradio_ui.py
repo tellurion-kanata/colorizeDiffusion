@@ -9,8 +9,9 @@ config_file = "configs/mapper/token.yaml"
 with open(config_file, 'r') as f:
     configs = yaml.safe_load(f.read())
 print(f"Loaded model config from {config_file}")
-model = utils.instantiate_from_config(configs['model'])
-model.cond_stage_model = model.cond_stage_model.cuda()
+model = utils.instantiate_from_config(configs['model']).eval()
+#model.cond_stage_model = model.cond_stage_model.cuda()
+model = model.cuda()
 origin_res = (512, 512)
 mani_params_num = 4
 mani_params = [{} for _ in range(mani_params_num)]
@@ -23,9 +24,8 @@ def inference(sketch, reference, scale, resolution, ddim_steps, eta,
     origin_res = sketch.size
     controls, targets, thresholdlists, target_scales, enhances = parse_manipulation_params()
     result = model.generate_image(sketch.convert('L'), reference, scale, resolution, ddim_steps, eta,
-                                  use_ema_scope, controls, targets, enhances,
-                                  thresholdlists, target_scales, seed)
-    result = cv2.resize(result, origin_res, interpolation=cv2.INTER_LINEAR)
+                                  use_ema_scope, enhances, controls, targets, thresholdlists, target_scales, seed)
+#    result = cv2.resize(result, origin_res, interpolation=cv2.INTER_LINEAR)
     return [result]
 
 

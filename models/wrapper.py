@@ -265,6 +265,7 @@ class AdjustLatentDiffusion(LatentDiffusion):
     """
         User interactive function.
     """
+    @torch.no_grad()
     def generate_image(self, sketch, reference, unconditional_guidance_scale, resolution,
                        ddim_steps, ddim_eta, use_ema_scope, enhance=[], control=[], target=[],
                        thresholds_list=[], target_scales=[], seed=None):
@@ -272,27 +273,30 @@ class AdjustLatentDiffusion(LatentDiffusion):
         pl.seed_everything(seed)
 
         # modify positional embedding according to image resolution
-        self.cond_stage_model.encoder.adjust_scale_factor(resolution)
-        v = self.cond_stage_model.encode_img(reference, resolution/512*224)
+        self.cond_stage_model.encoder.adjust_scale_factor(int(resolution))
+        v = self.cond_stage_model.encode_img(reference, int(resolution/512*224))
 
         # manipulate reference image embeddings
-        if len(target) > 0:
+        if target_scales[0] > 0.:
             assert len(target) == len(target_scales)
-            v = self.manipulate(v, target, target_scales, control, enhance, thresholds_list)
+            v = self.manipulate(v, target, target_scales, control, enhance, thresholds_list)[0]
         if self.type == "tokens":
-            v = [v[0][:, 1:]]
+            v = v[:, 1:]
 
         # generate images
-        c = {"c_concat": normalize(sketch, image_size=resolution), "c_crossattn": v}
-        inputs = [None, c, None]
-        logs, _ = super().log_images(inputs=inputs, return_inputs=False, ddim_steps=ddim_steps, ddim_eta=ddim_eta,
-                                     use_ema_scope=use_ema_scope)
+        sketch = normalize(sketch, image_size = resolution).to(self.device)
+        b, _, h, w = sketch.shape
+        c = {"c_concat": [sketch], "c_crossattn": [v]}
+        inputs = [[None, c], None, None]
+        logs, _ = super().log_images(batch=None, inputs=inputs, return_inputs=False, ddim_steps=ddim_steps, ddim_eta=ddim_eta, 
+        					sample=unconditional_guidance_scale==1., use_ema_scope=use_ema_scope, 
+        					unconditional_guidance_scale=unconditional_guidance_scale, unconditional_guidance_label="reference")
         sample_key = f"samples_cfg_scale_{unconditional_guidance_scale:.2f}" if unconditional_guidance_scale > 1.0 else "samples"
 
         # convert to RGB format
-        img = logs[sample_key][0]
+        img = torch.clamp(logs[sample_key][0], -1., 1.)
         img = (img + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
         img = img.permute(1, 2, 0).squeeze(-1)
-        img = img.numpy()
+        img = img.cpu().numpy()
         img = (img * 255).astype(np.uint8)
         return img

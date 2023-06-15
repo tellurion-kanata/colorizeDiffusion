@@ -75,8 +75,8 @@ class OpenCLIP(nn.Module):
         self.visual = OpenCLIPEncoder(model=model, **kwargs)
         self.transformer = FrozenOpenCLIPEmbedder(model=model, **kwargs)
         self.logit_scale_exp = model.logit_scale.exp()
-        self.openai_std = (0.48145466, 0.4578275, 0.40821073)
-        self.openai_mean = (0.26862954, 0.26130258, 0.27577711)
+        self.openai_mean = (0.48145466, 0.4578275, 0.40821073)
+        self.openai_std = (0.26862954, 0.26130258, 0.27577711)
 
     def preprocess(self, img, resolution=224):
         img = transforms.Resize((resolution, resolution))(img)

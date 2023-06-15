@@ -285,7 +285,6 @@ class AdjustLatentDiffusion(LatentDiffusion):
 
         # generate images
         sketch = normalize(sketch, image_size = resolution).to(self.device)
-        b, _, h, w = sketch.shape
         c = {"c_concat": [sketch], "c_crossattn": [v]}
         inputs = [[None, c], None, None]
         logs, _ = super().log_images(batch=None, inputs=inputs, return_inputs=False, ddim_steps=ddim_steps, ddim_eta=ddim_eta, 

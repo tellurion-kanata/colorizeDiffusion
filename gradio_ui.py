@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import cv2
 import yaml
+from PIL import Image
 import utils
 
 config_file = "configs/mapper/token.yaml"
@@ -15,7 +16,7 @@ model = model.cuda()
 origin_res = (512, 512)
 mani_params_num = 4
 mani_params = [{} for _ in range(mani_params_num)]
-
+maxium_resolution = 2048
 
 def inference(sketch, reference, scale, resolution, ddim_steps, eta,
               use_ema_scope, seed):
@@ -42,7 +43,7 @@ def parse_manipulation_params():
     thresholdlists = []
     enhances = []
     for param in mani_params:
-        if param['scale'] == 0.0: continue
+        if param['scale'].value == 0.0: continue
         controls.append(param['mani_prompt'].value)
         targets.append(param['target_prompt'].value)
         target_scales.append(param['scale'].value)
@@ -57,7 +58,9 @@ def get_heatmaps(reference, height, width):
     # the image here is for reference
     controls, targets, thresholdlists, target_scales, enhances = parse_manipulation_params()
     v = model.get_tokens(reference)
+    cls_token = v[:,0].unsqueeze(0)
     all_heatmaps = []
+    global_scales = []
     print("controls:", controls)
     print("targets:", targets)
     print("target scales:", target_scales)
@@ -65,10 +68,10 @@ def get_heatmaps(reference, height, width):
     print("enhance list:", enhances)
     for control, target, target_scale, thresholds, enhance in zip(controls, targets, target_scales, thresholdlists,
                                                                   enhances):
-        if target_scale == 0.:
-            continue
         local_v = v[:, 1:]
         c, t = model.cond_stage_model.encode_text([control]), model.cond_stage_model.encode_text([target])
+        global_scale = cls_token @ t.mT
+        global_scales.append(global_scale)
         scale = model.get_projections(local_v, c)
         scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
         scale = torch.nn.functional.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1,
@@ -83,17 +86,23 @@ def get_heatmaps(reference, height, width):
         all_heatmaps.append(heatmaps)
         # update image tokens
         v = model.manipulate_step(v, target, target_scale, control, enhance, thresholds)
-    return all_heatmaps
+    return all_heatmaps, target_scales, global_scales
 
 line_color = (0, 0, 0)
 length = 16
 
 def visualize_heatmaps(reference):
     size = reference.size
-    scale_maps_list = get_heatmaps(reference, size[1], size[0])
+    if size[0] > maxium_resolution or size[1] > maxium_resolution:
+        if size[0] > size[1]:
+            size = (2048, int(2048.0 / size[0] * size[1]))
+        else:
+            size = (int(2048.0 / size[1] * size[0]), 2048)
+        reference.resize(size, Image.BICUBIC)
+    scale_maps_list, target_scales, global_scales = get_heatmaps(reference, size[1], size[0])
     results = []
     reference = np.array(reference)
-    for scale_maps in scale_maps_list:
+    for scale_maps, t_s, g_s in zip(scale_maps_list, target_scales, global_scales):
         scale_map = scale_maps[0] + scale_maps[1] + scale_maps[2] + scale_maps[3]
         heatmap = cv2.cvtColor(cv2.applyColorMap(scale_map, cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
         result = cv2.addWeighted(reference, 0.3, heatmap, 0.7, 0)
@@ -103,7 +112,8 @@ def visualize_heatmaps(reference):
             result[i * hu, :] = line_color
         for i in range(16):
             result[:, i * wu] = line_color
-        results.append(result)
+        title = "Target Scale: " + str(t_s) + ", Global Scale: " + str(g_s)
+        results.append((result, title))
     return results
 
 

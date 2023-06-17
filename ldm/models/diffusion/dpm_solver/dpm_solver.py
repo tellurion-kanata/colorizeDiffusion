@@ -164,8 +164,8 @@ def model_wrapper(
         model_type="noise",
         model_kwargs={},
         guidance_type="uncond",
-        condition=None,
-        unconditional_condition=None,
+        c=None,
+        unconditional_conditioning=None,
         guidance_scale=1.,
         classifier_fn=None,
         classifier_kwargs={},
@@ -283,7 +283,7 @@ def model_wrapper(
         """
         with torch.enable_grad():
             x_in = x.detach().requires_grad_(True)
-            log_prob = classifier_fn(x_in, t_input, condition, **classifier_kwargs)
+            log_prob = classifier_fn(x_in, t_input, c, **classifier_kwargs)
             return torch.autograd.grad(log_prob.sum(), x_in)[0]
 
     def model_fn(x, t_continuous):
@@ -302,12 +302,30 @@ def model_wrapper(
             noise = noise_pred_fn(x, t_continuous)
             return noise - guidance_scale * expand_dims(sigma_t, dims=cond_grad.dim()) * cond_grad
         elif guidance_type == "classifier-free":
-            if guidance_scale == 1. or unconditional_condition is None:
-                return noise_pred_fn(x, t_continuous, cond=condition)
+            if guidance_scale == 1. or unconditional_conditioning is None:
+                return noise_pred_fn(x, t_continuous, cond=c)
             else:
                 x_in = torch.cat([x] * 2)
                 t_in = torch.cat([t_continuous] * 2)
-                c_in = torch.cat([unconditional_condition, condition])
+                if isinstance(c, dict):
+                    assert isinstance(unconditional_conditioning, dict)
+                    c_in = dict()
+                    for k in c:
+                        if isinstance(c[k], list):
+                            c_in[k] = [torch.cat([
+                                unconditional_conditioning[k][i],
+                                c[k][i]]) for i in range(len(c[k]))]
+                        else:
+                            c_in[k] = torch.cat([
+                                unconditional_conditioning[k],
+                                c[k]])
+                elif isinstance(c, list):
+                    c_in = list()
+                    assert isinstance(unconditional_conditioning, list)
+                    for i in range(len(c)):
+                        c_in.append(torch.cat([unconditional_conditioning[i], c[i]]))
+                else:
+                    c_in = torch.cat([unconditional_conditioning, c])
                 noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in).chunk(2)
                 return noise_uncond + guidance_scale * (noise - noise_uncond)
 

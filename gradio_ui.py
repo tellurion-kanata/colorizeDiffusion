@@ -11,8 +11,8 @@ with open(config_file, 'r') as f:
     configs = yaml.safe_load(f.read())
 print(f"Loaded model config from {config_file}")
 model = utils.instantiate_from_config(configs['model']).eval()
-#model.cond_stage_model = model.cond_stage_model.cuda()
-model = model.cuda()
+model.cond_stage_model = model.cond_stage_model.cuda()
+# model = model.cuda()
 origin_res = (512, 512)
 mani_params_num = 4
 mani_params = [{} for _ in range(mani_params_num)]

@@ -150,19 +150,19 @@ class AdjustLatentDiffusion(LatentDiffusion):
         adjust_scale = torch.where(maxmin > thresholds[3], dscale, adjust_scale)
         return adjust_scale
 
-    def manipulate_step(self, v, t, target_scale, c=None, enhance=False, thresholds=[]):
+    def manipulate_step(self, v, t, target_scale, a=None, c=None, enhance=False, thresholds=[]):
         if self.type == "global":
             t = [t] * v.shape[0]
             t = self.cond_stage_model.encode_text(t)
 
-            if c != "None":
-                c = [c] * v.shape[0]
-                c = self.cond_stage_model.encode_text(c)
+            if a != "none" or a is not None:
+                a = [a] * v.shape[0]
+                a = self.cond_stage_model.encode_text(a)
                 if enhance:
-                    s_c = self.cond_stage_model.calculate_scale(v, c)
-                    v = v - s_c * c
+                    s_a = self.cond_stage_model.calculate_scale(v, a)
+                    v = v - s_a * a
                 else:
-                    v = v + target_scale * (t - c)
+                    v = v + target_scale * (t - a)
                     return v
             cur_target_scale = self.cond_stage_model.calculate_scale(v, t)
             print(f"current target scale: {cur_target_scale}")
@@ -172,39 +172,45 @@ class AdjustLatentDiffusion(LatentDiffusion):
             v = v[:, 1:]
             c = [c] * v.shape[0]
             t = [t] * v.shape[0]
-            c = self.cond_stage_model.encode_text(c)
-            t = self.cond_stage_model.encode_text(t)
+            a = [a] * v.shape[0]
+            c, t, a = self.cond_stage_model.encode_text(c+t+a).chunk(3)
 
             control_scale = self.cond_stage_model.calculate_scale(cls_token, c)
+            anchor_scale = self.cond_stage_model.calculate_scale(cls_token, a)
             cur_target_scale = self.cond_stage_model.calculate_scale(cls_token, t)
-            dscale = target_scale - cur_target_scale
-            print(f"current global target scale: {cur_target_scale}, global control scale: {control_scale}")
+            dscale = target_scale - cur_target_scale if not enhance else target_scale - anchor_scale
+            print(f"current global target scale: {cur_target_scale},",
+                  f" global anchor scale: {anchor_scale},",
+                  f" global control scale: {control_scale}")
 
             c_map = self.cond_stage_model.calculate_scale(v, c)
+            a_map = self.cond_stage_model.calculate_scale(v, a)
             pwm = self.compute_pwm(c_map, dscale, thresholds=thresholds)
             base = 1 if enhance else 0
-            v = v + (pwm + base * c_map) * (t - c)
+            v = v + (pwm + base * a_map) * (t - a)
 
             v = torch.cat([cls_token, v], dim=1)
         return v
 
-    def manipulate(self, v, target, target_scales, control=None, enhance_list=[], thresholds_list=[]):
+    def manipulate(self, v, target, target_scales, anchor, control, enhance_list=[], thresholds_list=[]):
         """
             v: visual tokens in shape (b, n, c)
             target: target text embeddings in shape (b, 1 ,c)
             control: control text embeddings in shape (b, 1, c)
         """
         if self.type == "global":
-            for t, c, s_t, enhance in zip(target, control, target_scales, enhance_list):
-                v = self.manipulate_step(v, t, s_t, c, enhance)
+            for t, a, s_t, enhance in zip(target, anchor, target_scales, enhance_list):
+                v = self.manipulate_step(v, t, s_t, a, enhance=enhance)
         else:
-            for t, c, s_t, enhance, thresholds in zip(target, control, target_scales, enhance_list, thresholds_list):
-                v = self.manipulate_step(v, t, s_t, c, enhance, thresholds)
+            for t, a, c, s_t, enhance, thresholds in \
+                    zip(target, anchor, control, target_scales, enhance_list, thresholds_list):
+                v = self.manipulate_step(v, t, s_t, a, c, enhance, thresholds)
         return [v]
 
 
-    def log_images(self, batch, N=8, control=[], target=[], target_scale=[], thresholds=[[0.5, 0.55, 0.65, 0.95]], is_train=False,
-                   return_inputs=True, sample_original_cond=True, unconditional_guidance_scale=1.0, enhance=[], **kwargs):
+    def log_images(self, batch, N=8, anchor=[], target=[], target_scale=[], control=[],
+                   thresholds=[[0.5, 0.55, 0.65, 0.95]], is_train=False, return_inputs=True,
+                   sample_original_cond=True, unconditional_guidance_scale=1.0, enhance=[], **kwargs):
         def sample(inputs, sample_function):
             original_log, _ = sample_function(batch=None, inputs=inputs, N=N, return_inputs=return_inputs,
                                               unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
@@ -222,7 +228,14 @@ class AdjustLatentDiffusion(LatentDiffusion):
                                          bs=N)
             z, c = out[:2]
             v = c["c_crossattn"][0]
-            adjust_v = self.manipulate(v, target, target_scale, control, enhance_list=enhance, thresholds_list=thresholds)
+            adjust_v = self.manipulate(v,
+                                       target=target,
+                                       target_scales=target_scale,
+                                       anchor=anchor,
+                                       control=control,
+                                       enhance_list=enhance,
+                                       thresholds_list=thresholds)
+
             if self.type == "tokens":
                 out[1]["c_crossattn"] = [v[:, 1:]]
                 adjust_v = [adjust_v[0][:, 1:]]
@@ -267,8 +280,8 @@ class AdjustLatentDiffusion(LatentDiffusion):
     """
     @torch.no_grad()
     def generate_image(self, sketch, reference, unconditional_guidance_scale, resolution,
-                       ddim_steps, ddim_eta, use_ema_scope, enhance=[], control=[], target=[],
-                       thresholds_list=[], target_scales=[], seed=None):
+                       enhance=[], control=[], target=[], anchor=[], thresholds_list=[],
+                       target_scales=[], seed=None, **kwargs):
         # set global seed for generationz
         pl.seed_everything(seed)
 
@@ -287,10 +300,11 @@ class AdjustLatentDiffusion(LatentDiffusion):
         sketch = normalize(sketch, image_size = resolution).to(self.device)
         c = {"c_concat": [sketch], "c_crossattn": [v]}
         inputs = [[None, c], None, None]
-        logs, _ = super().log_images(batch=None, inputs=inputs, return_inputs=False, ddim_steps=ddim_steps, ddim_eta=ddim_eta, 
-        					sample=unconditional_guidance_scale==1., use_ema_scope=use_ema_scope, 
-        					unconditional_guidance_scale=unconditional_guidance_scale, unconditional_guidance_label="reference")
-        sample_key = f"samples_cfg_scale_{unconditional_guidance_scale:.2f}" if unconditional_guidance_scale > 1.0 else "samples"
+        logs, _ = super().log_images(batch=None, inputs=inputs, return_inputs=False,
+                                     sample=unconditional_guidance_scale==1.,
+                                     unconditional_guidance_scale=unconditional_guidance_scale, **kwargs)
+        sample_key = f"samples_cfg_scale_{unconditional_guidance_scale:.2f}" \
+            if unconditional_guidance_scale > 1.0 else "samples"
 
         # convert to RGB format
         img = torch.clamp(logs[sample_key][0], -1., 1.)

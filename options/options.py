@@ -63,11 +63,11 @@ class Options():
                                  help='Label used for unconditional guidance.')
         self.parser.add_argument('--use_ema', action='store_true',
                                  help='Use ema weights during sampling.')
-        self.parser.add_argument('--ddpm', action='store_true',
+        self.parser.add_argument('--sampler', type=str, default="dpm",
                                  help='Use DDIM sapmler during sampling.')
-        self.parser.add_argument('--ddim_step', type=int, default=200,
+        self.parser.add_argument('--step', '-s', type=int, default=20,
                                  help='DDIM sampler step')
-        self.parser.add_argument('--seed', '-s', type=int, default=None,
+        self.parser.add_argument('--seed', '-sd', type=int, default=None,
                                  help='Initialize global seed.')
         self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
                                  help="Ignore keys when initialize from checkpoint.")
@@ -97,7 +97,7 @@ class Options():
                                  help='Number of accumulate batches')
         self.parser.add_argument('--sample_num', '-sn', default=None, type=int,
                                  help='Number of batch size for sampling')
-        self.parser.add_argument('--niter', type=int, default=5,
+        self.parser.add_argument('--niter', type=int, default=10,
                                  help='# of iter at starting learning rate')
         self.parser.add_argument('--niter_decay', type=int, default=0,
                                  help='# of iter to linearly decay learning rate to zero')
@@ -131,9 +131,11 @@ class Options():
                                  help='Sampling using original conditions')
         self.parser.add_argument('--target_scale', '-ts', type=float, default=[], nargs='*',
                                  help='Target scale for prompt-based manipulation')
-        self.parser.add_argument('--control_prompt', '-ctl', type=str, default=[], nargs='*',
+        self.parser.add_argument('--control_prompt', '-c', type=str, default=[], nargs='*',
                                  help='Text prompt used to compute the position weight matrix')
-        self.parser.add_argument('--target_prompt', '-txt', type=str, default=[], nargs='*',
+        self.parser.add_argument('--target_prompt', '-t', type=str, default=[], nargs='*',
+                                 help='Text prompt used for prompt-based manipulation')
+        self.parser.add_argument('--anchor_prompt', '-a', type=str, default=[], nargs='*',
                                  help='Text prompt used for prompt-based manipulation')
         self.parser.add_argument('--enhance', '-e', type=list_of_bools, default="[false]")
         self.parser.add_argument('--thresholds', '-thres', type=list_of_floats, default="[[0.5, 0.55, 0.65, 0.95]]")

@@ -67,7 +67,7 @@ if __name__ == '__main__':
             load_checkpoint = opt.load_checkpoint
         else:
             model.make_it_fit = opt.fitting_model
-            model.init_from_ckpt(opt.load_checkpoint, ignore_keys=opt.ignore_keys)
+            model.init_from_ckpt(opt.load_checkpoint, ignore_keys=opt.ignore_keys, log_missing=True)
 
     # model = torch.compile(model)
     # start training

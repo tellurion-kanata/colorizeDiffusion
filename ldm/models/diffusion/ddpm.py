@@ -27,6 +27,7 @@ from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianD
 from ldm.models.autoencoder import IdentityFirstStage, AutoencoderKL
 from ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from ldm.models.diffusion.ddim import DDIMSampler
+from ldm.models.diffusion.dpm_solver import DPMSolverSampler
 
 
 __conditioning_keys__ = {'concat': 'c_concat',
@@ -206,7 +207,7 @@ class DDPM(pl.LightningModule):
                     print(f"{context}: Restored training weights")
 
     @torch.no_grad()
-    def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
+    def init_from_ckpt(self, path, ignore_keys=list(), only_model=False, log_missing=False):
         sd = torch.load(path, map_location="cpu")
         if "state_dict" in list(sd.keys()):
             sd = sd["state_dict"]
@@ -264,9 +265,9 @@ class DDPM(pl.LightningModule):
         missing, unexpected = self.load_state_dict(sd, strict=False) if not only_model else self.model.load_state_dict(
             sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
-        if len(missing) > 0:
+        if len(missing) > 0 and log_missing:
             print(f"Missing Keys:\n {missing}")
-        if len(unexpected) > 0:
+        if len(unexpected) > 0 and log_missing:
             print(f"\nUnexpected Keys:\n {unexpected}")
 
     def q_mean_variance(self, x_start, t):
@@ -1161,12 +1162,15 @@ class LatentDiffusion(DDPM):
                                   mask=mask, x0=x0)
 
     @torch.no_grad()
-    def sample_log(self, cond, batch_size, ddim, ddim_steps, shape, x_T=None, **kwargs):
-        if ddim:
+    def sample_log(self, cond, batch_size, sampler, steps, shape, x_T=None, **kwargs):
+        if sampler == "ddim":
             ddim_sampler = DDIMSampler(self)
-            samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond,
+            samples, intermediates = ddim_sampler.sample(steps, batch_size, shape, cond,
                                                          x_T=x_T, verbose=False, **kwargs)
-
+        elif sampler == "dpm":
+            dpm_sampler = DPMSolverSampler(self)
+            samples, intermediates = dpm_sampler.sample(steps, batch_size, shape, cond,
+                                                        x_T=x_T, verbose=False, **kwargs)
         else:
             shape = (batch_size, *shape)
             samples, intermediates = self.sample(cond=cond, batch_size=batch_size, shape=shape,
@@ -1200,12 +1204,11 @@ class LatentDiffusion(DDPM):
         return c
 
     @torch.no_grad()
-    def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=0., return_keys=None,
+    def log_images(self, batch, N=8, n_row=4, sample=True, sampler="ddim", steps=200, ddim_eta=0., return_keys=None,
                    quantize_denoised=False, inpaint=False, plot_denoise_rows=False, plot_progressive_rows=False,
-                   plot_diffusion_rows=False, unconditional_guidance_scale=1., unconditional_guidance_label=None,
+                   plot_diffusion_rows=False, unconditional_guidance_scale=1., unconditional_guidance_label="reference",
                    use_ema_scope=True, inputs=None, return_inputs=True, **kwargs):
         ema_scope = self.ema_scope if use_ema_scope else nullcontext
-        use_ddim = ddim_steps is not None
 
         log = dict()
         if not exists(inputs):
@@ -1278,8 +1281,8 @@ class LatentDiffusion(DDPM):
         if sample:
             # get denoise row
             with ema_scope("Sampling"):
-                samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, shape=shape, ddim=use_ddim,
-                                                         x_T=x_T, ddim_steps=ddim_steps, eta=ddim_eta)
+                samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, shape=shape, sampler=sampler,
+                                                         x_T=x_T, steps=steps, eta=ddim_eta)
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
@@ -1291,8 +1294,8 @@ class LatentDiffusion(DDPM):
                     self.first_stage_model, IdentityFirstStage):
                 # also display when quantizing x0 while sampling
                 with ema_scope("Plotting Quantized Denoised"):
-                    samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
-                                                             ddim_steps=ddim_steps, eta=ddim_eta,
+                    samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, sampler=sampler,
+                                                             steps=steps, eta=ddim_eta,
                                                              quantize_denoised=True)
                     # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True,
                     #                                      quantize_denoised=True)
@@ -1318,8 +1321,8 @@ class LatentDiffusion(DDPM):
                 if self.model.conditioning_key == "crossattn-adm":
                     uc = {"c_crossattn": [uc], "c_adm": c["c_adm"]}
             with ema_scope("Sampling with classifier-free guidance"):
-                samples_cfg, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, shape=shape,
-                                                 ddim_steps=ddim_steps, eta=ddim_eta, x_T=x_T,
+                samples_cfg, _ = self.sample_log(cond=c, batch_size=N, shape=shape, sampler=sampler,
+                                                 steps=steps, eta=ddim_eta, x_T=x_T,
                                                  unconditional_guidance_scale=unconditional_guidance_scale,
                                                  unconditional_conditioning=uc,
                                                  )
@@ -1334,8 +1337,8 @@ class LatentDiffusion(DDPM):
             mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 0.
             mask = mask[:, None, ...]
             with ema_scope("Plotting Inpaint"):
-                samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
-                                             ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+                samples, _ = self.sample_log(cond=c, batch_size=N, eta=ddim_eta, sampler=sampler,
+                                             steps=steps, x0=z[:N], mask=mask)
             x_samples = self.decode_first_stage(samples.to(self.device))
             log["samples_inpainting"] = x_samples
             log["mask"] = mask
@@ -1343,8 +1346,8 @@ class LatentDiffusion(DDPM):
             # outpaint
             mask = 1. - mask
             with ema_scope("Plotting Outpaint"):
-                samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
-                                             ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+                samples, _ = self.sample_log(cond=c, batch_size=N, eta=ddim_eta, sampler=sampler,
+                                             steps=steps, x0=z[:N], mask=mask)
             x_samples = self.decode_first_stage(samples.to(self.device))
             log["samples_outpainting"] = x_samples
 

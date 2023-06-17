@@ -14,6 +14,7 @@ model:
     cond_stage_key: colorize
     conditioning_key: colorize
     scale_factor: 0.18215
+    ckpt_path: checkpoints/deform-75drop/epoch-4.ckpt
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel

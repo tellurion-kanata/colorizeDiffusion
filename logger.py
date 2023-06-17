@@ -174,8 +174,8 @@ class ConsoleLogger(Callback):
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, save_path, sample_num, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, check_memory_use=False, log_on_batch_idx=True, log_first_step=True,
-                  ddpm=False, ddim_step=200, guidance_scale=1.0, guidance_label="reference",
-                 save_input=False, use_ema=False, target_scale=None, control=None, target=None, resume=False,
+                  sampler="dpm", steps=200, guidance_scale=1.0, guidance_label="reference", save_input=False,
+                 use_ema=False, target_scale=None, control=None, target=None, anchor=None, resume=False,
                  thresholds=[], sample_original=True, enhance=[], **kwargs):
         super().__init__()
         self.rescale = rescale
@@ -195,13 +195,14 @@ class ImageLogger(Callback):
         self.guidance_scale = guidance_scale
         self.guidance_label = guidance_label
         self.use_ema = use_ema
-        self.ddim_sample = not ddpm
-        self.ddim_sample_step = ddim_step
+        self.sampler = sampler
+        self.steps = steps
         self.save_input = save_input
         self.openai_norm_keys = ["reference", "conditioning"]
         self.target_scale = target_scale
         self.control = control
         self.target = target
+        self.anchor = anchor
         self.enhance = enhance
         self.sample_original_cond = sample_original
         self.thresholds = thresholds
@@ -251,11 +252,13 @@ class ImageLogger(Callback):
                 unconditional_guidance_scale = self.guidance_scale,
                 unconditional_guidance_label = self.guidance_label,
                 use_ema_scope = self.use_ema,
-                ddim_steps = self.ddim_sample_step if is_train or self.ddim_sample else None,
+                sampler = self.sampler,
+                steps = self.steps,
                 return_inputs = self.save_input,
                 target_scale = self.target_scale,
                 control = self.control,
                 target = self.target,
+                anchor = self.anchor,
                 enhance = self.enhance,
                 sample_original_cond = self.sample_original_cond,
                 is_train = is_train,
@@ -305,12 +308,13 @@ def setup_callbacks(opt, device_num=1, train=False):
         guidance_scale   = opt.guidance_scale,
         guidance_label   = opt.guidance_label,
         use_ema          = opt.use_ema,
-        ddpm             = opt.ddpm,
-        ddim_step        = opt.ddim_step,
+        sampler          = opt.sampler,
+        steps            = opt.step,
         save_input       = default(opt, 'save_input', True),
         target_scale     = default(opt, 'target_scale', []),
         control          = default(opt, 'control_prompt', []),
         target           = default(opt, 'target_prompt', []),
+        anchor           = default(opt, 'anchor_prompt', []),
         sample_original  = not default(opt, 'not_sample_original_cond', False),
         enhance          = default(opt, 'enhance', []),
         thresholds       = default(opt, 'thresholds', [])

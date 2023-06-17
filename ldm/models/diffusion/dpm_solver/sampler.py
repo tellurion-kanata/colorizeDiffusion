@@ -50,7 +50,7 @@ class DPMSolverSampler(object):
                ):
         if conditioning is not None:
             if isinstance(conditioning, dict):
-                cbs = conditioning[list(conditioning.keys())[0]].shape[0]
+                cbs = conditioning[list(conditioning.keys())[0]][0].shape[0]
                 if cbs != batch_size:
                     print(f"Warning: Got {cbs} conditionings but batch-size is {batch_size}")
             else:
@@ -76,8 +76,8 @@ class DPMSolverSampler(object):
             ns,
             model_type=MODEL_TYPES[self.model.parameterization],
             guidance_type="classifier-free",
-            condition=conditioning,
-            unconditional_condition=unconditional_conditioning,
+            c=conditioning,
+            unconditional_conditioning=unconditional_conditioning,
             guidance_scale=unconditional_guidance_scale,
         )
 

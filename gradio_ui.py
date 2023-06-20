@@ -18,14 +18,26 @@ mani_params_num = 4
 mani_params = [{} for _ in range(mani_params_num)]
 maxium_resolution = 2048
 
-def inference(sketch, reference, scale, resolution, ddim_steps, eta,
-              use_ema_scope, seed):
+def inference(sketch, reference, scale, resolution, seed, sampler, steps):
     global origin_res
     global model
     origin_res = sketch.size
-    controls, targets, thresholdlists, target_scales, enhances = parse_manipulation_params()
-    result = model.generate_image(sketch.convert('L'), reference, scale, resolution, ddim_steps, eta,
-                                  use_ema_scope, enhances, controls, targets, thresholdlists, target_scales, seed)
+    controls, targets, anchors, thresholdlists, target_scales, enhances = parse_manipulation_params()
+    result = model.generate_image(
+        sketch = sketch.convert('L'),
+        reference = reference,
+        unconditional_guidance_scale = scale,
+        resolution = resolution,
+        enhance = enhances,
+        controls = controls,
+        targets = targets,
+        anchors = anchors,
+        thresholds_list = thresholdlists,
+        target_scales = target_scales,
+        seed = seed,
+        sampler = sampler,
+        steps = steps
+    )
 #    result = cv2.resize(result, origin_res, interpolation=cv2.INTER_LINEAR)
     return [result]
 
@@ -39,24 +51,26 @@ def parse_manipulation_params():
     global mani_params
     controls = []
     targets = []
+    anchors = []
     target_scales = []
     thresholdlists = []
     enhances = []
     for param in mani_params:
         if param['scale'].value == 0.0: continue
-        controls.append(param['mani_prompt'].value)
+        controls.append(param['ctrl_prompt'].value)
         targets.append(param['target_prompt'].value)
+        anchors.append(param['anchor_prompt'].value)
         target_scales.append(param['scale'].value)
         thresholdlists.append([param['ts_0'].value, param['ts_1'].value, param['ts_2'].value, param['ts_3'].value])
         enhances.append(param['enhance'].value)
 
-    return controls, targets, thresholdlists, target_scales, enhances
+    return controls, targets, anchors, thresholdlists, target_scales, enhances
 
 
 def get_heatmaps(reference, height, width):
     global model
     # the image here is for reference
-    controls, targets, thresholdlists, target_scales, enhances = parse_manipulation_params()
+    controls, targets, anchors, thresholdlists, target_scales, enhances = parse_manipulation_params()
     v = model.get_tokens(reference)
     cls_token = v[:,0].unsqueeze(0)
     all_heatmaps = []
@@ -129,12 +143,12 @@ def init_inerface() -> None:
                 reference_img = gr.Image(label="Reference", source='upload', type="pil")
                 run_button = gr.Button(value="Run")
                 with gr.Accordion("Advanced Setting", open=False):
-                    ddim_steps = gr.Slider(label="Steps", minimum=1, maximum=200, value=20, step=1)
-                    eta = gr.Slider(label="DDIM ETA", minimum=0.0, maximum=1.0, value=0.0, step=0.01)
+                    sampler = gr.Radio(choices=["DDPM", "DDIM", "DPM"], type="value", value="DDPM", label="Sampler")
+                    steps = gr.Slider(label="Steps", minimum=1, maximum=200, value=20, step=1)
                     scale = gr.Slider(label="Guidance Scale", minimum=0.1, maximum=30.0, value=5.0, step=0.1)
                     resolution = gr.Slider(label="Image Resolution", minimum=256, maximum=2048, value=512, step=64)
-                    ema = gr.Checkbox(label="Use EMA Scope", value=False)
-
+                    #eta = gr.Slider(label="DDIM ETA", minimum=0.0, maximum=1.0, value=0.0, step=0.01)
+                    #ema = gr.Checkbox(label="Use EMA Scope", value=False)
                     seed = gr.Slider(label="Seed", minimum=-1, maximum=2147483647, step=1, value=12345)
             with gr.Column():
                 ref_gallery = gr.Gallery(label='Position Weights', show_label=False, elem_id="gallery").style(grid=1,
@@ -144,9 +158,12 @@ def init_inerface() -> None:
                         param['target_prompt'] = gr.Textbox(label="Target Prompt")
                         param['target_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'target_prompt', x),
                                                       inputs=param['target_prompt'])
-                        param['mani_prompt'] = gr.Textbox(label="Control Prompt")
-                        param['mani_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'mani_prompt', x),
-                                                    inputs=param['mani_prompt'])
+                        param['anchor_prompt'] = gr.Textbox(label="Anchor Prompt")
+                        param['anchor_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'anchor_prompt', x),
+                                                    inputs=param['anchor_prompt'])
+                        param['ctrl_prompt'] = gr.Textbox(label="Control Prompt")
+                        param['ctrl_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'ctrl_prompt', x),
+                                                    inputs=param['ctrl_prompt'])
                         param['scale'] = gr.Slider(label="Manipulation Scale", minimum=0, maximum=15.0, value=0.0,
                                                    step=0.1)
                         param['scale'].change(fn=lambda x, i=index: set_list_value(i, 'scale', x),
@@ -167,7 +184,7 @@ def init_inerface() -> None:
             with gr.Column():
                 result_gallery = gr.Gallery(label='Output', show_label=False, elem_id="gallery").style(grid=1,
                                                                                                        height='auto')
-        ips = [sketch_img, reference_img, scale, resolution, ddim_steps, eta, ema, seed]
+        ips = [sketch_img, reference_img, scale, resolution, seed, sampler, steps]
         run_button.click(fn=inference, inputs=ips, outputs=[result_gallery])
     block.launch(server_name='localhost')
 

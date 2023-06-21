@@ -301,9 +301,9 @@ class AdjustLatentDiffusion(LatentDiffusion):
             v = torch.zeros_like(v)
 
         # manipulate reference image embeddings
-        if target_scales[0] > 0.:
-            assert len(targets) == len(target_scales)
-            v = self.manipulate(v, targets, target_scales, anchors, controls, enhance, thresholds_list)[0]
+        if len(target_scales) > 0 and target_scales[0] > 0.:
+        		len(targets) == len(target_scales)
+        		v = self.manipulate(v, targets, target_scales, anchors, controls, enhance, thresholds_list)[0]
         if self.type == "tokens":
             v = v[:, 1:]
 

@@ -6,13 +6,13 @@ import yaml
 from PIL import Image
 import utils
 
-config_file = "configs/mapper/token.yaml"
+config_file = "configs/inference/token.yaml"
 with open(config_file, 'r') as f:
     configs = yaml.safe_load(f.read())
 print(f"Loaded model config from {config_file}")
 model = utils.instantiate_from_config(configs['model']).eval()
-model.cond_stage_model = model.cond_stage_model.cuda()
-# model = model.cuda()
+#model.cond_stage_model = model.cond_stage_model.cuda()
+model = model.cuda()
 origin_res = (512, 512)
 mani_params_num = 4
 mani_params = [{} for _ in range(mani_params_num)]
@@ -143,7 +143,7 @@ def init_inerface() -> None:
                 reference_img = gr.Image(label="Reference", source='upload', type="pil")
                 run_button = gr.Button(value="Run")
                 with gr.Accordion("Advanced Setting", open=False):
-                    sampler = gr.Radio(choices=["DDPM", "DDIM", "DPM"], type="value", value="DDPM", label="Sampler")
+                    sampler = gr.Radio(choices=["ddpm", "ddim", "dpm"], type="value", value="dpm", label="Sampler")
                     steps = gr.Slider(label="Steps", minimum=1, maximum=200, value=20, step=1)
                     scale = gr.Slider(label="Guidance Scale", minimum=0.1, maximum=30.0, value=5.0, step=0.1)
                     resolution = gr.Slider(label="Image Resolution", minimum=256, maximum=2048, value=512, step=64)

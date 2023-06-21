@@ -129,6 +129,7 @@ class OpenCLIPEncoder(nn.Module):
                  ):
         super().__init__()
         assert type in ["cls", "tokens", "full"]
+        self.device = device        
         self.type = type
         pretrained_version = versions[arch]
         if model is None:
@@ -153,7 +154,7 @@ class OpenCLIPEncoder(nn.Module):
         else:
             raise NotImplementedError()
 
-        self.device = device
+
         if freeze:
             self.freeze()
 
@@ -189,6 +190,7 @@ class OpenCLIPEncoder(nn.Module):
             positional_embedding = torch.cat([class_positional_embedding, positional_embedding], dim=0)
         else:
             positional_embedding = self.model.positional_embedding
+        positional_embedding = positional_embedding.to(self.device)
         self.positional_embedding = positional_embedding
 
     def forward(self, x: torch.Tensor):

@@ -1209,7 +1209,6 @@ class LatentDiffusion(DDPM):
                    plot_diffusion_rows=False, unconditional_guidance_scale=1., unconditional_guidance_label="reference",
                    use_ema_scope=True, inputs=None, return_inputs=True, **kwargs):
         ema_scope = self.ema_scope if use_ema_scope else nullcontext
-
         log = dict()
         if not exists(inputs):
             out, idx = self.get_input(batch, self.first_stage_key,

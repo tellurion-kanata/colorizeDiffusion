@@ -11,7 +11,6 @@ from utils import default, instantiate_from_config
 if __name__ == '__main__':
     parser = Options(eval=False)
     opt = parser.get_options()
-    opt.mode = 'train'
 
     # Load config file
     try:

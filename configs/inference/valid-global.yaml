@@ -69,6 +69,6 @@ dataloader:
       rotate_range: 45
     load_size: 576
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
-    keep_ratio: true
-    mode: test
+    keep_ratio: false
+    mode: validation
   shuffle: true

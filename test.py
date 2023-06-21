@@ -25,7 +25,6 @@ def modify_z_shape(params, eval_size):
 if __name__ == '__main__':
     parser = Options(eval=True)
     opt = parser.get_options()
-    opt.mode = 'test'
 
     pl.seed_everything(opt.seed)
     try:

@@ -287,12 +287,13 @@ class AdjustLatentDiffusion(LatentDiffusion):
     @torch.no_grad()
     def generate_image(self, sketch, reference, unconditional_guidance_scale, resolution,
                        enhance=[], controls=[], targets=[], anchors=[], thresholds_list=[],
-                       target_scales=[], seed=None, **kwargs):
+                       target_scales=[], seed=None, cls=False, **kwargs):
         # set global seed for generationz
         pl.seed_everything(seed)
 
         # modify positional embedding according to image resolution
-        self.cond_stage_model.encoder.adjust_scale_factor(int(resolution))
+        if not cls:
+            self.cond_stage_model.encoder.adjust_scale_factor(int(resolution))
         if reference is not None:
             v = self.cond_stage_model.encode_img(reference, int(resolution/512*224))
         else:
@@ -302,8 +303,8 @@ class AdjustLatentDiffusion(LatentDiffusion):
 
         # manipulate reference image embeddings
         if len(target_scales) > 0 and target_scales[0] > 0.:
-        		len(targets) == len(target_scales)
-        		v = self.manipulate(v, targets, target_scales, anchors, controls, enhance, thresholds_list)[0]
+            assert len(targets) == len(target_scales)
+            v = self.manipulate(v, targets, target_scales, anchors, controls, enhance, thresholds_list)[0]
         if self.type == "tokens":
             v = v[:, 1:]
 

@@ -186,7 +186,7 @@ class DraftDataset(data.Dataset):
     # TODO: remove use_clip option
     def __init__(self,
                  dataroot,
-                 mode,
+                 mode="train",
                  eval_load_size=None,
                  save_input=True,
                  refset_key="reference",
@@ -205,7 +205,7 @@ class DraftDataset(data.Dataset):
         dataroot = abspath(dataroot)
         self.sketch_root = join(dataroot, 'sketch')
         self.color_root = join(dataroot, 'color') if save_input else self.sketch_root
-        self.ref_root = join(dataroot, refset_key) if not self.eval else join(dataroot, 'reference') # use reference image in validation/testing
+        self.ref_root = join(dataroot, refset_key)
         self.image_files = [file for ext in IMAGE_EXTENSIONS
                             for file in glob(join(self.sketch_root, '*.{}'.format(ext)))]
         self.image_files += [file for ext in IMAGE_EXTENSIONS
@@ -249,8 +249,7 @@ class DraftDataset(data.Dataset):
 
         if self.offset > 0:
             ref_file = self.image_files[(index + self.offset) % self.data_size]
-            filename = basename(ref_file)
-            ref = Image.open(filename.replace(self.sketch_root, self.color_root)).convert('RGB')
+            ref = Image.open(ref_file.replace(self.sketch_root, self.color_root)).convert('RGB')
         else:
             ref = Image.open(filename.replace(self.sketch_root, self.ref_root)).convert('RGB')
         return [ske, col, ref], img_idx
@@ -361,7 +360,6 @@ class CustomDataLoader(pl.LightningDataModule):
 
         self.dataset = loader(
             dataroot        = opt.dataroot,
-            mode            = opt.mode,
             eval_load_size  = eval_load_size,
             save_input      = save_input,
             **cfg['params']

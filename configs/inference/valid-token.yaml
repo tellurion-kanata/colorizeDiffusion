@@ -2,7 +2,6 @@ model:
   base_learning_rate: 1.0e-6
   target: models.wrapper.AdjustLatentDiffusion
   params:
-    type: global
     linear_start: 0.00085
     linear_end: 0.0120
     num_timesteps_cond: 1
@@ -15,7 +14,7 @@ model:
     cond_stage_key: colorize
     conditioning_key: colorize
     scale_factor: 0.18215
-    ckpt_path: checkpoints/global/epoch-6.ckpt
+    ckpt_path: checkpoints/deform-75drop/epoch-4.ckpt
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.DualCondUnetModel
@@ -32,7 +31,6 @@ model:
         use_spatial_transformer: true
         transformer_depth: 1
         context_dim: 1024
-        add_only: true
 
     first_stage_config:
       target: models.autoencoder.VAE
@@ -56,7 +54,7 @@ model:
         encoder_type: full
         clip_config:
           scale_factor: 1.0
-          type: cls
+          type: full
 
 dataloader:
   class: DraftLoader    # ['ImageLoader', 'DraftLoader']
@@ -67,8 +65,10 @@ dataloader:
       resize: true
       jitter: False
       rotate_range: 45
+    refset_key: color
     load_size: 576
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
+    use_tokens: true
     keep_ratio: true
-    mode: test
+    mode: validation
   shuffle: true

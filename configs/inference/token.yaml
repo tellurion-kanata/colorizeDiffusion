@@ -69,4 +69,5 @@ dataloader:
     crop_size: 512     # crop images to (crop_size, crop_size), randomly crop images when crop_size < load_size
     use_tokens: true
     keep_ratio: true
+    mode: test
   shuffle: true

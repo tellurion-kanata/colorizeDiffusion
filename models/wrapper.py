@@ -172,23 +172,29 @@ class AdjustLatentDiffusion(LatentDiffusion):
             v = v[:, 1:]
             c = [c] * v.shape[0]
             t = [t] * v.shape[0]
-            a = [a] * v.shape[0]
-            c, t, a = self.cond_stage_model.encode_text(c+t+a).chunk(3)
-
-            control_scale = self.cond_stage_model.calculate_scale(cls_token, c)
-            anchor_scale = self.cond_stage_model.calculate_scale(cls_token, a)
+            c, t = self.cond_stage_model.encode_text(c+t).chunk(2)
             cur_target_scale = self.cond_stage_model.calculate_scale(cls_token, t)
-            dscale = target_scale - cur_target_scale if not enhance else target_scale - anchor_scale
+            control_scale = self.cond_stage_model.calculate_scale(cls_token, c)
             print(f"current global target scale: {cur_target_scale},",
-                  f" global anchor scale: {anchor_scale},",
                   f" global control scale: {control_scale}")
 
-            c_map = self.cond_stage_model.calculate_scale(v, c)
-            a_map = self.cond_stage_model.calculate_scale(v, a)
-            pwm = self.compute_pwm(c_map, dscale, thresholds=thresholds)
-            base = 1 if enhance else 0
-            v = v + (pwm + base * a_map) * (t - a)
+            if a != "none" or a is not None:
+                a = [a] * v.shape[0]
+                a = self.cond_stage_model.encode_text(a)
+                anchor_scale = self.cond_stage_model.calculate_scale(cls_token, a)
+                dscale = target_scale - cur_target_scale if not enhance else target_scale - anchor_scale
+                print(f"global anchor scale: {anchor_scale}")
 
+                c_map = self.cond_stage_model.calculate_scale(v, c)
+                a_map = self.cond_stage_model.calculate_scale(v, a)
+                pwm = self.compute_pwm(c_map, dscale, thresholds=thresholds) if c != "everything" else dscale
+                base = 1 if enhance else 0
+                v = v + (pwm + base * a_map) * (t - a)
+            else:
+                dscale = target_scale - cur_target_scale
+                c_map = self.cond_stage_model.calculate_scale(v, c)
+                pwm = self.compute_pwm(c_map, dscale, thresholds=thresholds) if c != "everything" else dscale
+                v = v + pwm * t
             v = torch.cat([cls_token, v], dim=1)
         return v
 
@@ -287,7 +293,12 @@ class AdjustLatentDiffusion(LatentDiffusion):
 
         # modify positional embedding according to image resolution
         self.cond_stage_model.encoder.adjust_scale_factor(int(resolution))
-        v = self.cond_stage_model.encode_img(reference, int(resolution/512*224))
+        if reference is not None:
+            v = self.cond_stage_model.encode_img(reference, int(resolution/512*224))
+        else:
+            # TODO: directly generate a zero tensor
+            v = self.cond_stage_model.encode_img(sketch, int(resolution/512*224))
+            v = torch.zeros_like(v)
 
         # manipulate reference image embeddings
         if target_scales[0] > 0.:

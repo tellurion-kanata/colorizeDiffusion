@@ -105,11 +105,11 @@ if __name__ == '__main__':
     # path1 = "H:/networks/pl-models/miniset/mapping/reference/1.jpg"
     # path1 = "H:/networks/pl-models/miniset/latest/reference/16.jpg"
     # path2 = "H:/networks/pl-models/miniset/origin/83162727.jpg"
-    path1 = "H:/networks/pl-models/generated/6.png"
-    path2 = "H:/networks/pl-models/generated/7.png"
+    path1 = "H:/networks/pl-models/generated/baseline.png"
+    path2 = "H:/networks/pl-models/generated/van-gogh-10.png"
     path3 = "H:/networks/pl-models/generated/5.png"
     # path4 = "H:/networks/pl-models/generated/3.png"
-    text = ["except the girl's red eyes", "the girl's hair"]
+    text = ["van gogh style", "the girl's hair"]
     clip = OpenCLIP(type="full").cuda()
     x = torch.cat([clip.preprocess(Image.open(path1)),
                    clip.preprocess(Image.open(path2)),
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
     dscale = scale[0] - scale[1]
     plt.hist(dscale.cpu().numpy())
-
+    #
     gscale = gscale[0] - gscale[1]
     plt.title(f"global dscale: {gscale[0].round(decimals=2).cpu().numpy()}", fontsize=18)
     plt.ylabel("token number", fontsize=18)

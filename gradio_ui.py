@@ -77,10 +77,11 @@ def get_heatmaps(reference, height, width):
     global_scales = []
     print("controls:", controls)
     print("targets:", targets)
+    print("anchors:", anchors)
     print("target scales:", target_scales)
     print("thresholds list:", thresholdlists)
     print("enhance list:", enhances)
-    for control, target, target_scale, thresholds, enhance in zip(controls, targets, target_scales, thresholdlists,
+    for control, target, anchor, target_scale, thresholds, enhance in zip(controls, targets, anchors, target_scales, thresholdlists,
                                                                   enhances):
         local_v = v[:, 1:]
         c, t = model.cond_stage_model.encode_text([control]), model.cond_stage_model.encode_text([target])
@@ -99,13 +100,22 @@ def get_heatmaps(reference, height, width):
             heatmaps.append(heatmap)
         all_heatmaps.append(heatmaps)
         # update image tokens
-        v = model.manipulate_step(v, target, target_scale, control, enhance, thresholds)
+        v = model.manipulate_step(
+            v=v, 
+            t=target, 
+            target_scale=target_scale,
+            a=anchor,
+            c=control, 
+            enhance=enhance, 
+            thresholds=thresholds)
     return all_heatmaps, target_scales, global_scales
 
 line_color = (0, 0, 0)
 length = 16
 
 def visualize_heatmaps(reference):
+    if reference is None:
+        return []
     size = reference.size
     if size[0] > maxium_resolution or size[1] > maxium_resolution:
         if size[0] > size[1]:
@@ -153,32 +163,35 @@ def init_inerface() -> None:
             with gr.Column():
                 ref_gallery = gr.Gallery(label='Position Weights', show_label=False, elem_id="gallery").style(grid=1,
                                                                                                               height='auto')
-                for index, param in enumerate(mani_params):
-                    with gr.Accordion("Param Group " + str(index), open=False):
-                        param['target_prompt'] = gr.Textbox(label="Target Prompt")
-                        param['target_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'target_prompt', x),
-                                                      inputs=param['target_prompt'])
-                        param['anchor_prompt'] = gr.Textbox(label="Anchor Prompt")
-                        param['anchor_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'anchor_prompt', x),
-                                                    inputs=param['anchor_prompt'])
-                        param['ctrl_prompt'] = gr.Textbox(label="Control Prompt")
-                        param['ctrl_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'ctrl_prompt', x),
-                                                    inputs=param['ctrl_prompt'])
-                        param['scale'] = gr.Slider(label="Manipulation Scale", minimum=0, maximum=15.0, value=0.0,
-                                                   step=0.1)
-                        param['scale'].change(fn=lambda x, i=index: set_list_value(i, 'scale', x),
-                                              inputs=param['scale'])
-                        param['ts_0'] = gr.Number(label="Threshold 0", value=0.5)
-                        param['ts_0'].change(fn=lambda x, i=index: set_list_value(i, 'ts_0', x), inputs=param['ts_0'])
-                        param['ts_1'] = gr.Number(label="Threshold 1", value=0.55)
-                        param['ts_1'].change(fn=lambda x, i=index: set_list_value(i, 'ts_1', x), inputs=param['ts_1'])
-                        param['ts_2'] = gr.Number(label="Threshold 2", value=0.65)
-                        param['ts_2'].change(fn=lambda x, i=index: set_list_value(i, 'ts_2', x), inputs=param['ts_2'])
-                        param['ts_3'] = gr.Number(label="Threshold 3", value=0.95)
-                        param['ts_3'].change(fn=lambda x, i=index: set_list_value(i, 'ts_3', x), inputs=param['ts_3'])
-                        param['enhance'] = gr.Checkbox(label="Enhance", value=False)
-                        param['enhance'].change(fn=lambda x, i=index: set_list_value(i, 'enhance', x),
+                with gr.Group():      
+                    for index, param in enumerate(mani_params):  
+                        with gr.Accordion("Param Group " + str(index), open=False):
+                            with gr.Group():
+                                with gr.Row():
+                                    param['target_prompt'] = gr.Textbox(label="Target Prompt")
+                                    param['target_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'target_prompt', x),
+                                                inputs=param['target_prompt'])
+                                    param['anchor_prompt'] = gr.Textbox(label="Anchor Prompt")
+                                    param['anchor_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'anchor_prompt', x),
+                                                inputs=param['anchor_prompt'])
+                                    param['ctrl_prompt'] = gr.Textbox(label="Control Prompt")
+                                    param['ctrl_prompt'].change(fn=lambda x, i=index: set_list_value(i, 'ctrl_prompt', x),
+                                                inputs=param['ctrl_prompt'])
+                                    param['enhance'] = gr.Checkbox(label="Enhance", value=False)
+                                    param['enhance'].change(fn=lambda x, i=index: set_list_value(i, 'enhance', x),
                                                 inputs=param['enhance'])
+                                    param['ts_0'] = gr.Number(label="Threshold 0", value=0.5)
+                                    param['ts_0'].change(fn=lambda x, i=index: set_list_value(i, 'ts_0', x), inputs=param['ts_0'])
+                                    param['ts_1'] = gr.Number(label="Threshold 1", value=0.55)
+                                    param['ts_1'].change(fn=lambda x, i=index: set_list_value(i, 'ts_1', x), inputs=param['ts_1'])
+                                    param['ts_2'] = gr.Number(label="Threshold 2", value=0.65)
+                                    param['ts_2'].change(fn=lambda x, i=index: set_list_value(i, 'ts_2', x), inputs=param['ts_2'])
+                                    param['ts_3'] = gr.Number(label="Threshold 3", value=0.95)
+                                    param['ts_3'].change(fn=lambda x, i=index: set_list_value(i, 'ts_3', x), inputs=param['ts_3'])
+                                    param['scale'] = gr.Slider(label="Manipulation Scale", minimum=0, maximum=15.0, value=0.0,
+                                                step=0.1)
+                                    param['scale'].change(fn=lambda x, i=index: set_list_value(i, 'scale', x),
+                                                inputs=param['scale'])
                 vis_button = gr.Button(value="Visualize")
                 vis_button.click(fn=visualize_heatmaps, inputs=[reference_img], outputs=[ref_gallery])
             with gr.Column():

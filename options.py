@@ -46,8 +46,8 @@ class Options():
                                  help='Dataset path')
         self.parser.add_argument('--batch_size', '-bs', default=32, type=int,
                                  help='Number of batch size')
-        self.parser.add_argument('--load_checkpoint', '-ckpt', type=str, default=None,
-                                 help='Checkpoint to load. Default is \'latest.safetensors\' under the checkpoint directory.')
+        self.parser.add_argument('--pretrained', '-pt', type=str, default=None,
+                                 help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
         self.parser.add_argument('--save_path', type=str, default='./checkpoints',
@@ -76,12 +76,12 @@ class Options():
             self.add_testing_options()
 
     def add_training_options(self):
-        self.parser.add_argument('--resume', action='store_true',
-                                 help='Resume training.')
         self.parser.add_argument('--fitting_model', '-fm', action='store_true',
                                  help='Fit the checkpoint states to the new model.')
 
         # training options
+        self.parser.add_argument('--load_checkpoint', '-ckpt', type=str, default=None,
+                                 help='Checkpoint to load.')
         self.parser.add_argument('--learning_rate', '-lr', default=1e-5, type=float,
                                  help="Learning rate")
         self.parser.add_argument('--dynamic_lr', '-dlr', action='store_true',
@@ -133,8 +133,6 @@ class Options():
         opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
         os.makedirs(opt.ckpt_path, exist_ok=True)
 
-        if opt.load_checkpoint is None:
-            opt.load_checkpoint = os.path.join(opt.ckpt_path, 'latest.safetensors')
         if opt.config_file is not None:
             shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
 

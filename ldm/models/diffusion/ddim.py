@@ -26,7 +26,7 @@ class DDIMSampler(object):
                                                   num_ddpm_timesteps=self.ddpm_num_timesteps,verbose=verbose)
         alphas_cumprod = self.model.alphas_cumprod
         assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, 'alphas have to be defined for each timestep'
-        to_torch = lambda x: x.clone().detach().to(torch.float32).to(self.model.device)
+        to_torch = lambda x: x.clone().detach().to(torch.float32).to(self.device)
 
         self.register_buffer('betas', to_torch(self.model.betas))
         self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
@@ -128,7 +128,7 @@ class DDIMSampler(object):
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       unconditional_guidance_scale=1., unconditional_conditioning=None, dynamic_threshold=None,
                       ucg_schedule=None):
-        device = self.model.betas.device
+        device = self.device
         b = shape[0]
         if x_T is None:
             img = torch.randn(shape, device=device)
@@ -270,7 +270,7 @@ class DDIMSampler(object):
         intermediates = []
         inter_steps = []
         for i in tqdm(range(num_steps), desc='Encoding Image'):
-            t = torch.full((x0.shape[0],), i, device=self.model.device, dtype=torch.long)
+            t = torch.full((x0.shape[0],), i, device=self.device, dtype=torch.long)
             if unconditional_guidance_scale == 1.:
                 noise_pred = self.model.apply_model(x_next, t, c)
             else:

@@ -1299,11 +1299,12 @@ class DiffusionWrapper(nn.Module):
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'hybrid-adm', 'crossattn-adm']
 
-    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, c_adm=None):
+    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, c_adm=None, injects=None):
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
-            out = self.diffusion_model(x, t, concat=c_concat[0])
+            x = torch.cat([x, c_concat[0]], 1)
+            out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'crossattn':
             if not self.sequential_cross_attn:
                 cc = torch.cat(c_crossattn, 1)
@@ -1317,14 +1318,14 @@ class DiffusionWrapper(nn.Module):
             else:
                 out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
-            xc = torch.cat(c_concat, 1)
             cc = torch.cat(c_crossattn, 1)
-            out = self.diffusion_model(x, t, context=cc, concat=xc)
+            out = self.diffusion_model(x, t, context=cc, concat=c_concat, injects=injects)
         elif self.conditioning_key == 'hybrid-adm':
             assert c_adm is not None
-            xc = torch.cat([x] + c_concat, dim=1)
+            xc = torch.cat(c_concat, 1)
             cc = torch.cat(c_crossattn, 1)
-            out = self.diffusion_model(xc, t, context=cc, y=c_adm)
+            c_adm = torch.cat(c_adm, 1)
+            out = self.diffusion_model(x, t, context=cc, concat=xc, injects=injects, y=c_adm)
         elif self.conditioning_key == 'crossattn-adm':
             assert c_adm is not None
             cc = torch.cat(c_crossattn, 1)

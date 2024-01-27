@@ -21,4 +21,4 @@ dependencies:
     - transformers==4.35.0
     - xformers==0.0.23.post1
     - gradio==4.13.0
-    - basicsr==
+    - basicsr==1.4.2

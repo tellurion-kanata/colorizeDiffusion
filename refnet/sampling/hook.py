@@ -34,28 +34,35 @@ class UnetHook(nn.Module):
             self,
             model,
             ldm,
+            bs,
             s,
             r,
             style_cfg=0.5,
+            control_cfg=0,
             gr_indice=None,
             injection=False,
             adain=False,
             gn_weight=1.0,
+            start_step=0,
     ):
         def forward(self, x, t, concat, context, **kwargs):
-            # Write
-            if outer.injection:
-                outer.attention_auto_machine = AutoMachine.Write
-            if outer.adain:
-                outer.gn_auto_machine = AutoMachine.Write
-            rx = ldm.q_sample(outer.r.cpu(), torch.round(t.float()).long().cpu()).cuda()
-            rs = outer.s.repeat(rx.shape[0], 1, 1, 1)
-            self.original_forward(rx, t, rs, context, **kwargs)
+            original_control_scale = self.control_scale
+            if 1 - t[0] / (ldm.num_timesteps - 1) >= outer.start_step:
+                # Write
+                if outer.injection:
+                    outer.attention_auto_machine = AutoMachine.Write
+                if outer.adain:
+                    outer.gn_auto_machine = AutoMachine.Write
 
-            # Read
-            outer.attention_auto_machine = AutoMachine.Read
-            outer.gn_auto_machine = AutoMachine.Read
-            return self.original_forward(x, t, concat, context, **kwargs)
+                self.control_scale = outer.current_control_scale
+                rx = ldm.q_sample(outer.r.cpu(), torch.round(t.float()).long().cpu()).cuda()
+                self.original_forward(x=rx, timesteps=t, concat=outer.s, context=context, **kwargs)
+
+                # Read
+                outer.attention_auto_machine = AutoMachine.Read
+                outer.gn_auto_machine = AutoMachine.Read
+            self.control_scale = original_control_scale
+            return self.original_forward(x=x, timesteps=t, concat=concat, context=context, **kwargs)
 
         def hacked_basic_transformer_inner_forward(self, x, context=None):
             x_norm1 = self.norm1(x)
@@ -86,7 +93,7 @@ class UnetHook(nn.Module):
                     self_attn1 = self.attn1(x_norm1, context=self_attention_context)
 
             x = self_attn1.to(x.dtype) + x
-            x = self.attn2(self.norm2(x), context=context) + x
+            x = self.attn2(self.norm2(x), context=context, scale=self.reference_scale) + x
             x = self.ff(self.norm3(x)) + x
             return x
 
@@ -121,12 +128,14 @@ class UnetHook(nn.Module):
             return y.to(x.dtype)
 
         if injection or adain:
-            self.s = s
+            self.s = [s.repeat(bs, 1, 1, 1) for s in ldm.control_encoder(s)]
             self.r = r
             self.injection = injection
             self.adain = adain
-            self.current_uc_indices = [gr_indice] if exists(gr_indice) else []
+            self.start_step = start_step
+            self.current_uc_indices = gr_indice
             self.current_style_fidelity = style_cfg
+            self.current_control_scale = control_cfg
 
             outer = self
             model = model.diffusion_model

@@ -1,5 +1,5 @@
 import logger
-import gc
+import psutil
 
 from tqdm import tqdm
 from options import Options
@@ -11,6 +11,8 @@ import torch
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration
 
+
+MAXM_VRAM = 40960           # Default GPU: A100-SXM4-40GB
 
 def get_configurations():
     parser = Options(eval=False)
@@ -26,35 +28,40 @@ def get_configurations():
     return opt, configs, device_num
 
 
+def get_system_memory_usage_gb():
+    memory = psutil.virtual_memory()
+    return memory.used / (1024 ** 3), memory.used / memory.total * 100.
+
+
 if __name__ == '__main__':
     opt, configs, device_num = get_configurations()
 
     # setup model and data loader
-    model = instantiate_from_config(configs.model)
     dataloader, data_size = create_dataloader(opt, configs.dataloader, device_num)
-    if opt.resume:
-        model.init_from_ckpt(opt.load_checkpoint, ignore_keys=opt.ignore_keys, make_it_fit=opt.fitting_model)
+    model = instantiate_from_config(configs.model)
+    optimizer = torch.optim.AdamW(model.get_trainable_params(), lr=opt.learning_rate)
+    if opt.pretrained is not None:
+        model.init_from_ckpt(opt.pretrained)
 
     # setup huggingface accelerator
-    projection_config = ProjectConfiguration(
-        project_dir = opt.ckpt_path,
-        automatic_checkpoint_naming = True,
-        total_limit = 3,
-    )
-    accelerate = Accelerator(
+    projection_config = ProjectConfiguration(project_dir=opt.ckpt_path)
+    accelerator = Accelerator(
         mixed_precision = opt.precision,
         log_with = "tensorboard",
         project_config = projection_config,
     )
-    optimizer = torch.optim.AdamW(model.get_trainable_params(), lr=opt.learning_rate)
-    model, optimizer, dataloader = accelerate.prepare(model, optimizer, dataloader)
+    model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
+
+    # resume training
+    if opt.load_checkpoint:
+        accelerator.load_state(opt.load_checkpoint)
 
     # setup loggers
     # TODO: Check if there are alternative methods in huggingface libraries
     vars_opt = vars(opt)
     batch_per_epoch = int(data_size // opt.batch_size // device_num)
     ckpt_callback = logger.CustomCheckpoint(**vars_opt)
-    if accelerate.is_local_main_process:
+    if accelerator.is_local_main_process:
         vis_logger = logger.ImageLogger(**vars_opt)
         cli_logger = logger.ConsoleLogger(batch_per_epoch=batch_per_epoch, **vars_opt)
         pbar_epoch = tqdm(initial=opt.start_epoch, total=opt.epoch, desc="Training process")
@@ -63,26 +70,35 @@ if __name__ == '__main__':
     global_step = 0
     model.training = True
     model.on_train_start()
-    ckpt_callback.on_train_start(accelerate, model)
-    accelerate.init_trackers(opt.name)
+    ckpt_callback.on_train_start(accelerator)
+    accelerator.init_trackers(opt.name)
     for epoch in range(opt.start_epoch, opt.epoch):
-        if accelerate.is_local_main_process:
+        if accelerator.is_local_main_process:
             pbar_iter = tqdm(total=len(dataloader), desc=f"Current epoch {epoch}, process")
 
         for idx, batch in enumerate(dataloader):
             # forward and backward
             loss = model.training_step(batch, idx)
-            accelerate.backward(loss)
+            accelerator.backward(loss)
             optimizer.step()
             optimizer.zero_grad()
 
             # batch end callbacks
-            loss_dict = {"loss": loss.item()}
-            accelerate.log(loss_dict, step=global_step)
             model.on_train_batch_end()
-            ckpt_callback.on_train_batch_end(accelerate, model, global_step, idx)
+            ckpt_callback.on_train_batch_end(accelerator, global_step, idx)
+            loss_dict = {"loss": accelerator.gather(loss.repeat(opt.batch_size)).mean().item()}
 
-            if accelerate.is_local_main_process:
+            if accelerator.is_local_main_process:
+                # check cpu memory usage for deepspeed ZeRO
+                # ram_used, ram_usage = get_system_memory_usage_gb()
+                # logging_dict = {
+                #     "cpu_memory_used (GB)": ram_used,
+                #     "cpu_memory_usage (%)": ram_usage,
+                #     "gpu_memory_allocated": torch.cuda.memory_allocated() / (1024 ** 2),
+                # }
+                # logging_dict.update(loss_dict)
+
+                logging_dict = loss_dict
                 training_state = {
                     "max_epoch": opt.epoch,
                     "learning_rate": opt.learning_rate,
@@ -93,23 +109,23 @@ if __name__ == '__main__':
                     "current_epoch": epoch,
                 }
 
+                accelerator.log(logging_dict, step=global_step)
                 vis_logger.on_train_batch_end(model, **training_state)
                 cli_logger.on_train_batch_end(**training_state)
                 pbar_iter.set_postfix(loss_dict)
                 pbar_iter.update(1)
-                del training_state
+                del logging_dict, training_state
 
             global_step += 1
             del loss_dict
 
         # epoch end callbacks
-        ckpt_callback.on_train_epoch_end(accelerate, model, epoch)
-        if accelerate.is_local_main_process:
+        ckpt_callback.on_train_epoch_end(accelerator, epoch)
+        if accelerator.is_local_main_process:
             cli_logger.on_train_epoch_end(epoch, global_step, opt.learning_rate)
             pbar_epoch.update(1)
-            pbar_epoch.close()
-        gc.collect()
+            pbar_iter.close()
 
-    accelerate.end_training()
-    if accelerate.is_local_main_process:
+    accelerator.end_training()
+    if accelerator.is_local_main_process:
         pbar_epoch.close()

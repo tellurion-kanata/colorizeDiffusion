@@ -1,12 +1,18 @@
 import torch
 import torch.nn as nn
 
-from einops import rearrange
-from ldm.modules.attention import SpatialTransformer, CrossAttention, MemoryEfficientCrossAttention
+from refnet.modules.attention import (
+    SelfTransformerBlock,
+    Transformer,
+    SpatialTransformer,
+    FuseTransformer,
+    DiTTransformer,
+    IPTransformer
+)
 from ldm.modules.diffusionmodules.openaimodel import (
     timestep_embedding,
     conv_nd,
-    TimestepEmbedSequential,
+    TimestepBlock,
     exists,
     zero_module,
     ResBlock,
@@ -14,7 +20,6 @@ from ldm.modules.diffusionmodules.openaimodel import (
     Downsample,
     Upsample,
     normalization,
-    checkpoint,
 )
 
 try:
@@ -25,65 +30,32 @@ except:
     XFORMERS_IS_AVAILBLE = False
 
 
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+    """
+    A sequential module that passes timestep embeddings to the children that
+    support it as an extra input.
+    """
 
-class SelfAttentionBlock(nn.Module):
-    ATTENTION_MODES = {
-        "softmax": CrossAttention,  # vanilla attention
-        "softmax-xformers": MemoryEfficientCrossAttention
-    }
-
-    def __init__(self, dim, n_heads, d_head, dropout=0., checkpoint=True, disable_self_attn=False):
-        super().__init__()
-        attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
-        assert attn_mode in self.ATTENTION_MODES
-        attn_cls = self.ATTENTION_MODES[attn_mode]
-        self.disable_self_attn = disable_self_attn
-        self.attn = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
-                             context_dim=dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
-        self.norm = nn.LayerNorm(dim)
-        self.checkpoint = checkpoint
-
-    def forward(self, x):
-        return checkpoint(self._forward, (x,), self.parameters(), self.checkpoint)
-
-    def _forward(self, x):
-        b, c, h, w = x.shape
-        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
-        x = self.attn(self.norm(x)) + x
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+    def forward(self, x, emb, context=None, injects=None):
+        for layer in self:
+            if isinstance(layer, TimestepBlock):
+                x = layer(x, emb)
+            elif isinstance(layer, Transformer):
+                inject = injects.pop(0) if exists(injects) else None
+                x = layer(x, context, inject)
+            else:
+                x = layer(x)
         return x
 
 
-class UNetModel(nn.Module):
-    """
-    The full UNet model with attention and timestep embedding.
-    :param in_channels: channels in the input Tensor.
-    :param model_channels: base channel count for the model.
-    :param out_channels: channels in the output Tensor.
-    :param num_res_blocks: number of residual blocks per downsample.
-    :param attention_resolutions: a collection of downsample rates at which
-        attention will take place. May be a set, list, or tuple.
-        For example, if this contains 4, then at 4x downsampling, attention
-        will be used.
-    :param dropout: the dropout probability.
-    :param channel_mult: channel multiplier for each level of the UNet.
-    :param conv_resample: if True, use learned convolutions for upsampling and
-        downsampling.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param num_classes: if specified (as an int), then this model will be
-        class-conditional with `num_classes` classes.
-    :param use_checkpoint: use gradient checkpointing to reduce memory usage.
-    :param num_heads: the number of attention heads in each attention layer.
-    :param num_heads_channels: if specified, ignore num_heads and instead use
-                               a fixed channel width per attention head.
-    :param num_heads_upsample: works with num_heads to set a different number
-                               of heads for upsampling. Deprecated.
-    :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
-    :param resblock_updown: use residual blocks for up/downsampling.
-    :param use_new_attention_order: use a different attention pattern for potentially
-                                    increased efficiency.
-    """
 
+class UNetModel(nn.Module):
+    transformers = {
+        "vanilla": SpatialTransformer,
+        "fuse": FuseTransformer,
+        "dit": DiTTransformer,
+        "ipadapter": IPTransformer,
+    }
     def __init__(
         self,
         image_size,
@@ -99,6 +71,7 @@ class UNetModel(nn.Module):
         num_classes=None,
         use_checkpoint=False,
         use_fp16=False,
+        use_bf16=False,
         num_heads=-1,
         num_head_channels=-1,
         num_heads_upsample=-1,
@@ -107,16 +80,21 @@ class UNetModel(nn.Module):
         use_spatial_transformer=False,    # custom transformer support
         transformer_depth=1,              # custom transformer support
         context_dim=None,                 # custom transformer support
+        n_embed=None,                     # custom support for prediction of discrete ids into codebook of first stage vq model
         legacy=True,
         disable_self_attentions=None,
         num_attention_blocks=None,
         disable_middle_self_attn=False,
         use_linear_in_transformer=False,
         adm_in_channels=None,
+        transformer_type="vanilla",
+        only_decoder=False,
     ):
         super().__init__()
         if use_spatial_transformer:
             assert context_dim is not None, 'Fool!! You forgot to include the dimension of your cross-attention conditioning...'
+            assert transformer_type in self.transformers.keys(), f'Assigned transformer is not implemented.. Choices: {self.transformers.keys()}'
+        transformer = self.transformers[transformer_type]
 
         if context_dim is not None:
             assert use_spatial_transformer, 'Fool!! You forgot to use the spatial transformer for your cross-attention conditioning...'
@@ -132,7 +110,7 @@ class UNetModel(nn.Module):
 
         if num_head_channels == -1:
             assert num_heads != -1, 'Either num_heads or num_head_channels has to be set'
-
+        self.only_decoder = only_decoder
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -162,9 +140,11 @@ class UNetModel(nn.Module):
         self.num_classes = num_classes
         self.use_checkpoint = use_checkpoint
         self.dtype = torch.float16 if use_fp16 else torch.float32
+        self.dtype = torch.bfloat16 if use_bf16 else self.dtype
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
+        self.predict_codebook_ids = n_embed is not None
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -232,11 +212,9 @@ class UNetModel(nn.Module):
 
                     if not exists(num_attention_blocks) or nr < num_attention_blocks[level]:
                         layers.append(
-                            SelfAttentionBlock(
-                                ch,
-                                n_heads=num_heads,
-                                d_head=dim_head,
-                            ) if not use_spatial_transformer else SpatialTransformer(
+                            SelfTransformerBlock(ch, dim_head)
+                            if not use_spatial_transformer or only_decoder
+                            else transformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint
@@ -287,11 +265,8 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            SelfAttentionBlock(
-                ch,
-                n_heads=num_heads,
-                d_head=dim_head,
-            ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
+            SelfTransformerBlock(ch, dim_head) if not use_spatial_transformer
+            else transformer(  # always uses a self-attn
                             ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
                             use_checkpoint=use_checkpoint
@@ -339,11 +314,8 @@ class UNetModel(nn.Module):
 
                     if not exists(num_attention_blocks) or i < num_attention_blocks[level]:
                         layers.append(
-                            SelfAttentionBlock(
-                                ch,
-                                n_heads=num_heads,
-                                d_head=dim_head,
-                            ) if not use_spatial_transformer else SpatialTransformer(
+                            SelfTransformerBlock(ch, num_heads, dim_head) if not use_spatial_transformer
+                            else transformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint
@@ -375,43 +347,31 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        """
-        Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param context: conditioning plugged in via crossattn
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
-        """
-        concat = concat.to(self.dtype) if exists(concat) else concat
-        context = context.to(self.dtype) if exists(context) else context
-
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-        hs = []
+    def forward(self, x, timesteps=None, y=None, *args, **kwargs):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False).to(self.dtype)
         emb = self.time_embed(t_emb)
-
+        assert (y is not None) == (
+                self.num_classes is not None
+        ), "must specify y if and only if the model is class-conditional"
         if self.num_classes is not None:
             assert y.shape[0] == x.shape[0]
-            emb = emb + self.label_emb(y)
+            emb = emb + self.label_emb(y.to(self.dtype))
 
+        h = self._forward(x, emb, *args, **kwargs)
+        return self.out(h).to(x.dtype)
+
+    def _forward(self, x, emb, concat=None, context=None, **kwargs):
+        hs = []
         h = x.to(self.dtype)
         for module in self.input_blocks:
-            if exists(concat):
-                h = module(h, emb, context) + concat
-                concat = None
-            else:
-                h = module(h, emb, context)
+            h = module(h, emb, context)
             hs.append(h)
+
         h = self.middle_block(h, emb, context)
+
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
-
-        h = self.out(h).to(x.dtype)
         return h
 
 
@@ -442,27 +402,15 @@ class DualCondUNet(UNetModel):
             zero_module(conv_nd(2, 256, model_channels, 3, padding=1))
         )
 
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        concat = concat.to(self.dtype)
-        context = context.to(self.dtype)
+        self.control_scale = 1.
 
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+    def _forward(self, x, emb, concat=None, context=None, y=None, **kwargs):
         hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False).to(self.dtype)
-        emb = self.time_embed(t_emb)
-
-        if self.num_classes is not None:
-            assert y.shape[0] == x.shape[0]
-            emb = emb + self.label_emb(y)
-
-        h = x.to(self.dtype)
         hint = self.semantic_input_blocks(concat, emb, context)
-
+        h = x.to(self.dtype)
         for module in self.input_blocks:
             if exists(hint):
-                h = module(h, emb, context) + hint
+                h = module(h, emb, context) + hint * self.control_scale
                 hint = None
             else:
                 h = module(h, emb, context)
@@ -473,155 +421,94 @@ class DualCondUNet(UNetModel):
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
-        h = h
-        return self.out(h).to(x.dtype)
-
+        return h
 
 """
     Deepspeed converts all model weights to fp16 during training.
     Need to change all hidden outputs to fp16.
     Inference wrappers recover the original forward process according to Stable Diffusion implementation.
 """
-class InferenceUNetWrapper(UNetModel):
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        concat = concat.to(self.dtype) if exists(concat) else concat
-        context = context.to(self.dtype) if exists(context) else context
 
-        assert (y is not None) == (
+
+def InferenceForward(self, x, timesteps=None, y=None, *args, **kwargs):
+    t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+    emb = self.time_embed(t_emb).to(self.dtype)
+    assert (y is not None) == (
             self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-        hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb).to(self.dtype)
+    ), "must specify y if and only if the model is class-conditional"
 
-        if self.num_classes is not None:
-            assert y.shape[0] == x.shape[0]
-            emb = emb + self.label_emb(y)
+    if self.num_classes is not None:
+        assert y.shape[0] == x.shape[0]
+        emb = emb + self.label_emb(y.to(emb.device))
+    emb = emb.to(self.dtype)
+    h = self._forward(x, emb, *args, **kwargs)
+    return self.out(h.to(x.dtype))
 
+class InferenceUNetModel(UNetModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forward = InferenceForward.__get__(self, self.__class__)
+
+class InferenceDualCondUNet(DualCondUNet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forward = InferenceForward.__get__(self, self.__class__)
+
+
+class MultiDualCondUNet(UNetModel):
+    def __init__(self, proj_length=None, encoder_type="mult", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.control_scale = 1.
+        self.hint_encoder_index = [0, 3, 6, 9, 11]
+
+        self.ebottom_idx = [6, 7]
+        self.dbottom_idx = [2, 3, 4]
+        self.proj_length = proj_length
+
+        if encoder_type in ["full", "nfull",]:
+            self.hint_decoder_index = [0, 3, 6, 9]
+        else:
+            self.hint_decoder_index = []
+
+    def _forward(self, x, emb, concat=None, context=None, injects=None, **kwargs):
         h = x.to(self.dtype)
-        for module in self.input_blocks:
-            if exists(concat):
-                h = module(h, emb, context) + concat
-                concat = None
-            else:
-                h = module(h, emb, context)
-            hs.append(h)
-        h = self.middle_block(h, emb, context)
-        for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context)
 
-        h = h.to(x.dtype)
-        h = self.out(h)
+        hs = []
+        concat_iter = iter(concat)
+        for idx, module in enumerate(self.input_blocks):
+            if exists(self.proj_length):
+                if idx in self.ebottom_idx:
+                    ccontext = context[:, :self.proj_length]
+                else:
+                    ccontext = context[:, self.proj_length:]
+            else:
+                ccontext = context
+            h = module(h, emb, ccontext, injects)
+
+            if idx in self.hint_encoder_index:
+                h += next(concat_iter) * self.control_scale
+            hs.append(h)
+
+        h = self.middle_block(h, emb, context, injects)
+
+        for idx, module in enumerate(self.output_blocks):
+            if exists(self.proj_length):
+                if idx in self.dbottom_idx:
+                    ccontext = context[:, :self.proj_length]
+                else:
+                    ccontext = context[:, self.proj_length:]
+            else:
+                ccontext = context
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, ccontext, injects)
+
+            if idx in self.hint_decoder_index:
+                h += next(concat_iter) * self.control_scale
         return h
 
 
-class InferenceDualCondUNet(DualCondUNet):
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        concat = concat.to(self.dtype)
-        context = context.to(self.dtype)
-
-        assert (y is not None) == (
-                self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-        hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb).to(self.dtype)
-
-        if self.num_classes is not None:
-            assert y.shape[0] == x.shape[0]
-            emb = emb + self.label_emb(y)
-
-        h = x.to(self.dtype)
-        hint = self.semantic_input_blocks(concat, emb, context)
-
-        for module in self.input_blocks:
-            if exists(hint):
-                h = module(h, emb, context) + hint
-                hint = None
-            else:
-                h = module(h, emb, context)
-            hs.append(h)
-
-        h = self.middle_block(h, emb, context)
-
-        for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context)
-        h = h.to(x.dtype)
-        return self.out(h)
-
-
-class ProjUNet(DualCondUNet):
-    def __init__(self, context_dim, proj_heads=64, proj_hidden_channels=64, *args, **kwargs):
-        super().__init__(context_dim=context_dim, *args, **kwargs)
-        self.proj_heads = proj_heads
-        self.proj_hidden_channels = proj_hidden_channels
-
-        self.proj_layers = nn.Sequential(
-            linear(context_dim, proj_heads*proj_hidden_channels),
-            nn.LayerNorm(proj_heads*proj_hidden_channels),
-            nn.SiLU(),
-        )
-        self.to_context = nn.Sequential(
-            linear(proj_hidden_channels, context_dim),
-            nn.LayerNorm(context_dim),
-            nn.SiLU(),
-        )
-
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        concat = concat.to(self.dtype)
-        context = context.to(self.dtype)
-
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False).to(self.dtype)
-        emb = self.time_embed(t_emb)
-        hint = self.semantic_input_blocks(concat, emb, context)
-        context = self.proj_layers(context).reshape(-1, self.proj_heads, self.proj_hidden_channels).contiguous()
-        context = self.to_context(context)
-
-        hs = []
-        h = x.to(self.dtype)
-        for module in self.input_blocks:
-            if exists(hint):
-                h = module(h, emb, context) + hint
-                hint = None
-            else:
-                h = module(h, emb, context)
-            hs.append(h)
-
-        h = self.middle_block(h, emb, context)
-
-        for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context)
-        h = h
-        return self.out(h).to(x.dtype)
-
-class InferenceProjUNet(ProjUNet):
-    def forward(self, x, timesteps=None, concat=None, context=None, y=None, **kwargs):
-        concat = concat.to(self.dtype)
-
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb).to(self.dtype)
-
-        hint = self.semantic_input_blocks(concat, emb, context)
-        context = self.proj_layers(context).reshape(-1, self.proj_heads, self.proj_hidden_channels).contiguous()
-        context = self.to_context(context).to(self.dtype)
-
-        hs = []
-        h = x.to(self.dtype)
-        for module in self.input_blocks:
-            if exists(hint):
-                h = module(h, emb, context) + hint
-                hint = None
-            else:
-                h = module(h, emb, context)
-            hs.append(h)
-
-        h = self.middle_block(h, emb, context)
-
-        for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context)
-        h = h.to(x.dtype)
-        return self.out(h)
+class InferenceMultiCondUNet(MultiDualCondUNet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forward = InferenceForward.__get__(self, self.__class__)

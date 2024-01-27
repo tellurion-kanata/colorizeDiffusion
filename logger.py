@@ -42,41 +42,32 @@ class CustomCheckpoint:
         self.save_freq_step = save_freq_step
         self.save_weight_only = not not_save_weight_only
         self.ckpt_path = ckpt_path
-
         self.start_save_ep = start_save_ep
         self.save_freq = save_freq
         self.top_k = top_k
         self.prev_ckpts = []
-
         self.prev_time = time.time()
 
-    def refine_state_dict(self, sd):
-        new_sd = {}
-        for key in sd.keys():
-            new_sd[key.replace("module.", "")] = sd[key]
-        return new_sd
 
-    def on_train_start(self, trainer: Accelerator, model):
+    def on_train_start(self, trainer: Accelerator):
         if self.save_first_step:
-            filename = os.path.join(self.ckpt_path, f'latest.{ckpt_fmt}')
-            message = f"Saving latest model to {filename}"
-
+            filename = os.path.join(self.ckpt_path, f'latest')
             trainer.wait_for_everyone()
-            trainer.save(self.refine_state_dict(model.state_dict()), filename, safe_serialization=True)
-            # trainer.save_state()
+            trainer.save_state(filename)
 
             if trainer.is_local_main_process:
+                message = f"Saving latest model to {filename}"
                 tqdm.write(message)
-                train_log = open(os.path.join(self.ckpt_path, 'train_log.txt'), 'a')
+                train_log = open(os.path.join(self.ckpt_path, 'logs.txt'), 'a')
                 train_log.write(message + '\n')
                 train_log.close()
 
-    def on_train_batch_end(self, trainer: Accelerator, model, global_step, batch_idx):
+
+    def on_train_batch_end(self, trainer: Accelerator, global_step, batch_idx):
         if global_step > 2 and batch_idx % self.save_freq_step == 0:
-            filename = os.path.join(self.ckpt_path, f'latest.{ckpt_fmt}')
+            filename = os.path.join(self.ckpt_path, f'latest')
             trainer.wait_for_everyone()
-            trainer.save(self.refine_state_dict(model.state_dict()), filename, safe_serialization=True)
-            # trainer.save_state()
+            trainer.save_state(filename)
 
             if trainer.is_local_main_process:
                 curtime = time.time()
@@ -85,28 +76,27 @@ class CustomCheckpoint:
                 message = (f"***** Saving latest model to {os.path.abspath(filename)}, "
                            f"saving interval: {format_time(interval)} *****")
                 tqdm.write(message)
-                train_log = open(os.path.join(self.ckpt_path, 'train_log.txt'), 'a')
+                train_log = open(os.path.join(self.ckpt_path, 'logs.txt'), 'a')
                 train_log.write(message + '\n')
                 train_log.close()
 
-    def on_train_epoch_end(self, trainer: Accelerator, model, current_epoch):
+
+    def on_train_epoch_end(self, trainer: Accelerator, current_epoch):
         if current_epoch >= self.start_save_ep and current_epoch % self.save_freq == 0:
-            filename = os.path.join(self.ckpt_path, f"epoch-{current_epoch}.{ckpt_fmt}")
+            filename = os.path.abspath(os.path.join(self.ckpt_path, f"epoch-{current_epoch}"))
             trainer.wait_for_everyone()
-            trainer.save(self.refine_state_dict(model.state_dict()), filename, safe_serialization=True)
-            # trainer.save_state()
+            trainer.save_state(filename)
 
             if trainer.is_local_main_process:
-                if len(self.prev_ckpts) == self.top_k:
+                if len(self.prev_ckpts) >= self.top_k:
+                    import shutil
                     filename = self.prev_ckpts.pop(0)
-                    os.remove(filename)
-                    weights_path = filename.replace(f".{ckpt_fmt}", f"_model.{ckpt_fmt}")
-                    if os.path.exists(weights_path):
-                        os.remove(weights_path)
+                    if os.path.exists(filename):
+                        shutil.rmtree(filename)
                 self.prev_ckpts.append(filename)
-                message = f"***** Saving latest model to {os.path.abspath(filename)} *****"
+                message = f"***** Saving latest model to {filename} *****"
                 tqdm.write(message)
-                train_log = open(os.path.join(self.ckpt_path, 'train_log.txt'), 'a')
+                train_log = open(os.path.join(self.ckpt_path, 'logs.txt'), 'a')
                 train_log.write(message + '\n')
                 train_log.close()
 
@@ -160,7 +150,7 @@ class ConsoleLogger:
                 message += f', {label}: {loss_dict[label]:.6f}'
 
             tqdm.write(message)
-            train_log = open(os.path.join(self.ckpt_path, 'train_log.txt'), 'a')
+            train_log = open(os.path.join(self.ckpt_path, 'logs.txt'), 'a')
             train_log.write(message + '\n')
             train_log.close()
 
@@ -181,7 +171,7 @@ class ConsoleLogger:
         message += " }"
 
         tqdm.write(message)
-        train_log = open(os.path.join(self.ckpt_path, 'train_log.txt'), 'a')
+        train_log = open(os.path.join(self.ckpt_path, 'logs.txt'), 'a')
         train_log.write(message + '\n\n')
         train_log.close()
 
@@ -203,10 +193,9 @@ class ImageLogger:
             sampler="dpm",
             step=20,
             guidance_scale=1.0,
-            guidance_label="reference",
             save_input=False,
-            use_ema=False,
-            resume=False,
+            load_checkpoint=None,
+            pretrained=None,
             log_img_step=None,
             **kwargs
     ):
@@ -223,13 +212,11 @@ class ImageLogger:
         self.sampling_params = {
             "sample": guidance_scale == 1.,
             "unconditional_guidance_scale": guidance_scale,
-            "unconditional_guidance_label": guidance_label,
-            "use_ema_scope": use_ema,
             "sampler": sampler,
             "step": step,
         }
 
-        if not resume and not check_memory_use:
+        if load_checkpoint is None and pretrained is None and not check_memory_use:
             self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
         else:
             self.log_steps = []
@@ -249,6 +236,14 @@ class ImageLogger:
         for k in images:
             dirpath = os.path.join(self.save_path, k)
             os.makedirs(dirpath, exist_ok=True)
+
+            if isinstance(images[k], torch.Tensor):
+                images[k] = images[k].detach().cpu().float()
+                if self.clamp:
+                    images[k] = torch.clamp(images[k], -1., 1.)
+            if len(images[k].shape) == 3:
+                images[k] = images[k].unsqueeze(0)
+
             if is_train:
                 # save grid images during training
                 grid = torchvision.utils.make_grid(images[k], nrow=4)
@@ -277,16 +272,7 @@ class ImageLogger:
                 **self.sampling_params,
             )
 
-            for k in images:
-                if isinstance(images[k], torch.Tensor):
-                    images[k] = images[k].detach().cpu().float()
-                    if self.clamp:
-                        images[k] = torch.clamp(images[k], -1., 1.)
-                if len(images[k].shape) == 3:
-                    images[k] = images[k].unsqueeze(0)
-
             self.log_local(images, global_step, current_epoch, batch_idx, is_train)
-
             if is_train:
                 model.train()
 
@@ -301,7 +287,7 @@ class ImageLogger:
         return False
 
     def on_train_batch_end(self, model, global_step, current_epoch, batch, batch_idx, **kwargs):
-        check_idx = batch_idx if self.log_on_batch_idx else model.global_step
+        check_idx = batch_idx if self.log_on_batch_idx else global_step
         if not self.disabled and global_step > 0 and self.check_frequency(check_idx):
             self.log_img(model, batch, batch_idx, global_step, current_epoch)
 

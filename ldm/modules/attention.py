@@ -7,7 +7,7 @@ from einops import rearrange, repeat
 from typing import Optional, Any
 
 from ldm.modules.diffusionmodules.util import checkpoint
-
+from sgm.util import append_dims
 
 try:
     import xformers
@@ -43,6 +43,10 @@ def init_(tensor):
     std = 1 / math.sqrt(dim)
     tensor.uniform_(-std, std)
     return tensor
+
+
+def zero_drop(x, p):
+    return torch.bernoulli((1 - p) * append_dims(torch.ones(x.shape[0], device=x.device, dtype=x.dtype), x.ndim))
 
 
 # feedforward
@@ -213,7 +217,7 @@ class MemoryEfficientCrossAttention(nn.Module):
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
         self.attention_op: Optional[Any] = None
 
-    def forward(self, x, context=None, mask=None):
+    def forward(self, x, context=None, mask=None, scale=1.):
         q = self.to_q(x)
         context = default(context, x)
         k = self.to_k(context)
@@ -230,7 +234,7 @@ class MemoryEfficientCrossAttention(nn.Module):
         )
 
         # actually compute the attention, what we cannot get enough of
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op) * scale
 
         if exists(mask):
             raise NotImplementedError
@@ -249,7 +253,7 @@ class BasicTransformerBlock(nn.Module):
         "softmax-xformers": MemoryEfficientCrossAttention
     }
     def __init__(self, dim, n_heads, d_head, dropout=0., context_dim=None, gated_ff=True, checkpoint=True,
-                 disable_self_attn=False):
+                 disable_self_attn=False, **kwargs):
         super().__init__()
         attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
         assert attn_mode in self.ATTENTION_MODES
@@ -260,19 +264,29 @@ class BasicTransformerBlock(nn.Module):
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
                               heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
+
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
+        self.reference_scale = 1
         self.checkpoint = checkpoint
 
-    def forward(self, x, context=None):
-        return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
+    def forward(self, x, context=None, inject=None):
+        if exists(inject):
+            return checkpoint(self._forward, (x, context, inject), self.parameters(), self.checkpoint)
+        else:
+            return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
 
-    def _forward(self, x, context=None):
-        x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x
-        x = self.attn2(self.norm2(x), context=context) + x
+    def _forward(self, x, context=None, inject=None):
+        x = self.attn1(
+            x = self.norm1(x),
+            context = self.norm1(torch.cat([x, inject], 1)) if exists(inject) else None
+        ) + x
+
+        x = self.attn2(self.norm2(x), context = context, scale = self.reference_scale) + x
         x = self.ff(self.norm3(x)) + x
         return x
+
 
 
 class SpatialTransformer(nn.Module):
@@ -291,6 +305,7 @@ class SpatialTransformer(nn.Module):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
+
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
@@ -305,7 +320,7 @@ class SpatialTransformer(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim[d],
-                                   disable_self_attn=disable_self_attn, checkpoint=use_checkpoint)
+                               disable_self_attn=disable_self_attn, checkpoint=use_checkpoint)
                 for d in range(depth)]
         )
         if not use_linear:

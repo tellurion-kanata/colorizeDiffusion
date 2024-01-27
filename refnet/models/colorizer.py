@@ -1,221 +1,125 @@
 import torch
 
-from refnet.models.basemodel import CustomizedColorizer, UnetHook, GuidanceFlag
-from sgm.util import exists
+from refnet.models.basemodel import CustomizedColorizer, CustomizedWrapper, torch_dfs
+from refnet.util import exists, expand_to_batch_size
+from refnet.sampling.manipulation import local_manipulate, global_manipulate
 
 
-"""
-    This class is for Colorize Diffusion v1 models. 
-"""
-
-def latent_shuffle(x: torch.Tensor):
-    b, n, c = x.shape
-
-    new_ind = torch.randperm(n)
-    shuffled = x[:, new_ind]
-    return shuffled.contiguous()
-
-
-class ColorizeDiffusion(CustomizedColorizer):
-    @torch.no_grad()
-    def get_input(
-            self,
-            batch,
-            k,
-            bs=None,
-            return_x=False,
-            return_original_cond=False,
-            *args,
-            **kwargs
-    ):
-        with torch.no_grad():
-            if exists(bs):
-                for key in batch.keys():
-                    batch[key] = batch[key][:bs]
-
-            x = batch[self.first_stage_key]
-            xc = batch[self.cond_stage_key]
-            xs = batch[self.control_key][:, :1]
-
-            x, xc, xs = map(
-                lambda t: t.to(memory_format=torch.contiguous_format).to(self.dtype),
-                (x, xc, xs)
-            )
-            z = self.get_first_stage_encoding(self.encode_first_stage(x)).detach()
-            c = self.cond_stage_model.encode(xc, "local").detach()
-
-            if self.training:
-                c = latent_shuffle(c)
-
-        out = [z, dict(c_crossattn=[c], c_concat=[xs])]
-        if return_x:
-            out.extend([x])
-        if return_original_cond:
-            out.extend([xc, xs])
-        return out
-
-from refnet.sampling.manipulation import local_manipulate, get_heatmaps
-
-class InferenceWrapper(ColorizeDiffusion):
+class InferenceWrapper(CustomizedWrapper, CustomizedColorizer):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.noise_level = 0
+        CustomizedColorizer.__init__(self, *args, **kwargs)
+        CustomizedWrapper.__init__(self)
 
 
-    def apply_model(self, x_noisy, t, cond, return_ids=False):
-        if 1 - (t[0] / (self.num_timesteps + 1e-4)) < self.noise_level:
-            crossattn = cond["c_crossattn"][0]
-            cond["c_crossattn"] = [self.q_sample(crossattn.cpu(), t.long().cpu()).cuda()]
-        return super().apply_model(x_noisy, t, cond, return_ids)
+    def adjust_masked_attn(self, mask_threshold):
+        for layer in self.attn_layers:
+            layer.mask_threshold = mask_threshold
+
+
+    def get_learned_embedding(self, *args, **kwargs):
+        return super().get_learned_embedding(*args, **kwargs).to(self.dtype)
 
 
     def prepare_conditions(
             self,
             bs,
-            control,
+            sketch,
             reference,
-            targets,
-            anchors,
-            controls,
-            target_scales,
-            enhances,
-            thresholds_list,
+            control_scale = 1,
+            mask_scale = 1,
+            cond_aug = 0.,
+            smask = None,
+            rmask = None,
+            mask_threshold_ref = 0.,
+            mask_threshold_sketch = 0.,
+            style_enhance = False,
+            bg_enhance = False,
+            fg_scale = 1.,
+            bg_scale = 1.,
+            merge_scale = 0.,
+            background = None,
+            targets = None,
+            anchors = None,
+            controls = None,
+            target_scales = None,
+            enhances = None,
+            thresholds_list = None,
             *args,
             **kwargs
     ):
-        def expand_to_batch_size(bs, x):
-            x = x.repeat(bs, *([1] * (len(x.shape) - 1)))
-            return x
-
+        # prepare reference embedding
         manipulate = self.check_manipulate(target_scales)
-        emb = self.cond_stage_model.encode(reference, "full") if exists(reference) \
-            else torch.zeros_like(self.cond_stage_model.encode(control, "full"))
+        c = {}
+        uc = [{}, {}]
+        
+        if exists(reference):
+            reference = reference + cond_aug * torch.randn_like(reference)
+            emb = self.cond_stage_model.encode(reference, "full")
+        else:
+            emb = torch.zeros_like(self.cond_stage_model.encode(sketch, "full"))
 
-        if manipulate:
-            emb = local_manipulate(
-                self.cond_stage_model,
-                emb,
-                targets,
-                target_scales,
-                anchors,
-                controls,
-                enhances,
-                thresholds_list
-            )
-        emb = emb[:, 1:]
+        # text manipulation
+        if self.token_type == "cls":
+            if manipulate:
+                emb = global_manipulate(
+                    self.cond_stage_model,
+                    emb[:, :1],
+                    targets,
+                    target_scales,
+                    anchors,
+                    enhances,
+                )
+            emb = emb[:, :1]
+        else:
+            if manipulate:
+                emb = local_manipulate(
+                    self.cond_stage_model,
+                    emb,
+                    targets,
+                    target_scales,
+                    anchors,
+                    controls,
+                    enhances,
+                    thresholds_list
+                )
+            emb = emb[:, 1:]
 
-        crossattn = expand_to_batch_size(bs, emb)
-        control = expand_to_batch_size(bs, control)
-        control = -control[:, :1]
-        uc_crossattn = torch.zeros_like(crossattn)
-        null_control = torch.zeros_like(control)
-        c = {"c_concat": [control], "c_crossattn": [crossattn]}
-        uc = [
-            {"c_concat": [control], "c_crossattn": [uc_crossattn]},
-            {"c_concat": [null_control], "c_crossattn": [crossattn]}
-        ]
+        emb = self.proj(emb)
+        # masked attention preprocessing
+        if bg_enhance:
+            assert exists(rmask) and exists(smask)
+
+            self.adjust_fgbg_scale(fg_scale, bg_scale, merge_scale, mask_threshold_sketch)
+            if exists(background):
+                bg_emb = self.get_learned_embedding(background, "local")
+            else:
+                bg_emb = self.get_learned_embedding(
+                    torch.where(rmask < mask_threshold_ref, reference, torch.ones_like(reference)), "local"
+                )
+            emb = torch.cat([emb, bg_emb], 1)
+
+            # sketch mask for cross-attention
+            smask = expand_to_batch_size(smask.to(self.dtype), bs)
+
+            for d in [c] + uc:
+                d.update({"mask": smask})
+
+        sketch = sketch.to(self.dtype)
+        context = expand_to_batch_size(emb, bs).to(self.dtype)
+        uc_context = torch.zeros_like(context)
+
+        control = []
+        uc_control = []
+        encoded_sketch = self.control_encoder(
+            torch.cat([sketch, -torch.ones_like(sketch)], 0)
+        )
+        for es in encoded_sketch:
+            es = es * control_scale
+            ec, uec = es.chunk(2)
+            control.append(expand_to_batch_size(ec, bs))
+            uc_control.append(expand_to_batch_size(uec, bs))
+
+        c.update({"control": control, "context": [context]})
+        uc[0].update({"control": control, "context": [uc_context]})
+        uc[1].update({"control": uc_control, "context": [context]})
         return c, uc
-
-
-    @torch.no_grad()
-    def generate(
-            self,
-            sampler,
-            step: int,
-            gs: list[float],
-            bs: int,
-            cond: dict,
-            height: int = 512,
-            width: int = 512,
-            low_vram: bool = True,
-            injection: bool = False,
-            injection_cfg: float = 0.5,
-            adain: bool = False,
-            adain_cfg: float = 0.5,
-            hook_xr: torch.Tensor = None,
-            hook_sketch: torch.Tensor = None,
-            use_local: bool = False,
-            use_rx: bool = False,
-            noise_level: float = 0.,
-            manipulation_params = None,
-            **kwargs,
-    ):
-        """
-            User interface function.
-        """
-
-        self.noise_level = noise_level
-        hook_unet = UnetHook()
-        control = cond["concat"]
-        reference = cond["crossattn"]
-
-        if low_vram:
-            self.cpu()
-            self.low_vram_shift(["cond"] + self.switch_modules)
-        else:
-            self.low_vram_shift([model for model in self.model_list.keys()])
-
-        c, uc = self.prepare_conditions(
-            bs,
-            control,
-            reference,
-            **manipulation_params
-        )
-
-        cfg = int(gs[0] > 1) * GuidanceFlag.reference + int(gs[1] > 1) * GuidanceFlag.sketch
-        gr_indice = None if (cfg == GuidanceFlag.none or cfg == GuidanceFlag.sketch) else 1
-        if cfg == GuidanceFlag.none:
-            gs = 1
-        if cfg == GuidanceFlag.reference:
-            gs = gs[0]
-            uc = uc[0]
-        if cfg == GuidanceFlag.sketch:
-            gs = gs[1]
-            uc = uc[1]
-
-        if low_vram:
-            self.low_vram_shift("first")
-
-        rx = None
-        if injection or adain:
-            rx = self.get_first_stage_encoding(self.encode_first_stage(hook_xr.to(self.first_stage_model.dtype)))
-            hook_unet.enhance_reference(
-                model=self.model,
-                ldm=self,
-                s=hook_sketch[:, :1],
-                r=rx,
-                injection=injection,
-                style_cfg=injection_cfg,
-                adain=adain,
-                gn_weight=adain_cfg,
-                gr_indice=gr_indice,
-            )
-
-        if use_rx:
-            t = torch.ones((bs,)).long() * (self.num_timesteps - 1)
-            if not exists(rx):
-                rx = self.get_first_stage_encoding(self.encode_first_stage(hook_xr.to(self.first_stage_model.dtype)))
-            rx = self.q_sample(rx.cpu(), t).cuda()
-        else:
-            rx = None
-
-        if low_vram:
-            self.low_vram_shift("unet")
-
-        z = self.sample(
-            cond=c,
-            uncond=uc,
-            bs=bs,
-            shape=(self.channels, height // 8, width // 8),
-            cfg_scale=gs,
-            step=step,
-            sampler=sampler,
-            x_T=rx
-        )
-
-        if injection or adain:
-            hook_unet.restore(self.model)
-
-        if low_vram:
-            self.low_vram_shift("first")
-        return self.decode_first_stage(z.to(self.first_stage_model.dtype))

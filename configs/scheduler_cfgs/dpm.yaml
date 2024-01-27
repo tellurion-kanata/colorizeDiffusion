@@ -1,0 +1,8 @@
+beta_start: 0.00085
+beta_end: 0.012
+beta_schedule: "scaled_linear"
+steps_offset: 1
+
+### Zero-SNR params
+#rescale_betas_zero_snr: True
+timestep_spacing: "leading"

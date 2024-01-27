@@ -1,0 +1,181 @@
+:root {
+  --primary-color: #9b59b6;
+  --primary-light: #d6c6e1;
+  --secondary-color: #2ecc71;
+  --text-color: #333333;
+  --background-color: #f9f9f9;
+  --card-bg: #ffffff;
+  --border-radius: 10px;
+  --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 5px 15px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+  --gradient: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  --input-border: #e0e0e0;
+  --input-bg: #ffffff;
+  --font-weight-normal: 500;
+  --font-weight-bold: 700;
+}
+
+/* Base styles */
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: var(--font-weight-normal);
+  background-color: var(--background-color);
+  color: var(--text-color);
+  width: 100%;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Force full width layout */
+#main-interface, 
+.gradio-app, 
+.gradio-container {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+  overflow-x: hidden !important;
+}
+
+/* Header styling */
+#header-row {
+  background: white;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.header-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.app-header .emoji {
+  font-size: 36px;
+}
+
+/* Fix for Colorize Diffusion title visibility */
+.gradio-markdown h1,
+.gradio-markdown h2,
+#header-row h1,
+#header-row h2,
+.title-text,
+.app-header .title-text {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+  color: var(--primary-color) !important;
+  font-size: 32px !important;
+  font-weight: 800 !important;
+}
+
+/* Badge links under the header */
+.paper-links-icons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.paper-links-icons a {
+  transition: transform 0.2s ease;
+  opacity: 0.9;
+}
+
+.paper-links-icons a:hover {
+  transform: translateY(-3px);
+  opacity: 1;
+}
+
+/* Content layout */
+#content-row {
+  padding: 0 20px 20px 20px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Apply bold font to all text elements for better readability */
+p, span, label, button, input, textarea, select, .gradio-button, .gradio-checkbox, .gradio-dropdown, .gradio-textbox {
+  font-weight: var(--font-weight-normal);
+}
+
+/* Make headings bolder */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-bold);
+}
+
+/* Improved font styling for Gradio UI elements */
+.gradio-container, 
+.gradio-container *, 
+.gradio-app, 
+.gradio-app * {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* Style for labels and slider labels */
+.gradio-container label,
+.gradio-slider label,
+.gradio-checkbox label,
+.gradio-radio label,
+.gradio-dropdown label,
+.gradio-textbox label,
+.gradio-number label,
+.gradio-button,
+.gradio-checkbox span,
+.gradio-radio span {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+}
+
+/* Style for buttons */
+button, 
+.gradio-button {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+}
+
+/* Style for input values */
+input, 
+textarea, 
+select,
+.gradio-textbox textarea,
+.gradio-number input {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* Better styling for drop areas */
+.upload-box,
+[data-testid="image"] {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* Additional styling for values in sliders and numbers */
+.wrap .wrap .wrap span {
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+}

@@ -117,11 +117,12 @@ def get_heatmaps(model, reference, height, width, vis_c, ts0, ts1, ts2, ts3,
         for c, t, a, target_scale, thresholds, enhance in inputs_iter:
             # update image tokens
             v = local_manipulate_step(clip, v, t, target_scale, a, c, enhance, thresholds)
-
+    token_length = v.shape[1] - 1
+    grid_num = int(token_length ** 0.5)
     vis_c = clip.encode_text([vis_c])
     local_v = v[:, 1:]
     scale = clip.calculate_scale(local_v, vis_c)
-    scale = scale.permute(0, 2, 1).view(1, 1, 16, 16)
+    scale = scale.permute(0, 2, 1).view(1, 1, grid_num, grid_num)
     scale = F.interpolate(scale, size=(height, width), mode="bicubic").squeeze(0).view(1, height * width)
 
     # calculate heatmaps

@@ -287,6 +287,19 @@ def model_wrapper(
             return torch.autograd.grad(log_prob.sum(), x_in)[0]
 
     def model_fn(x, t_continuous):
+        def reconstruct_cond(cond_dict, uncond_dict):
+            if not isinstance(uncond_dict, list):
+                uncond_dict = [uncond_dict]
+            new_dict = cond_dict.copy()
+            for key in cond_dict.keys():
+                for uc in uncond_dict:
+                    if len(new_dict[key]) > 1:
+                        new_dict[key] = [torch.cat([new_dict[key][idx], uc[key][idx]], 0) for idx in
+                                         range(len(uc[key]))]
+                    else:
+                        new_dict[key] = [torch.cat(new_dict[key] + uc[key], 0)]
+            return new_dict
+
         """
         The noise predicition model function that is used for DPM-Solver.
         """
@@ -308,33 +321,16 @@ def model_wrapper(
             if guidance_scale == 1.:
                 return noise_pred_fn(x, t_continuous, cond=condition)
 
-            c_in = dict()
+            c_in = reconstruct_cond(condition, unconditional_condition)
             if not isinstance(guidance_scale, list):
-                for k in condition:
-                    c_in[k] = [torch.cat(condition[k])]
-                assert isinstance(unconditional_condition, dict)
-                for k in c_in:
-                    c_in[k] = [torch.cat([
-                    unconditional_condition[k][i],
-                    c_in[k][i]]).cuda() for i in range(len(c_in[k]))]
                 x_in = torch.cat([x] * 2)
                 t_in = torch.cat([t_continuous] * 2)
-                noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in).chunk(2)
+                noise, noise_uncond = noise_pred_fn(x_in, t_in, cond=c_in).chunk(2)
                 return noise_uncond + guidance_scale * (noise - noise_uncond)
             else:
-                for k in condition:
-                    c_in[k] = [torch.cat(condition[k])]
-                for i, gs in enumerate(guidance_scale):
-                    uc = unconditional_condition[i]
-                    assert isinstance(uc, dict)
-                    for k in c_in:
-                        c_in[k] = [torch.cat([
-                            uc[k][i],
-                            c_in[k][i]]).cuda() for i in range(len(c_in[k]))]
-
                 x_in = torch.cat([x] * 3)
                 t_in = torch.cat([t_continuous] * 3)
-                uc_s, uc_r, noise = noise_pred_fn(x_in, t_in, cond=c_in).chunk(3)
+                noise, uc_r, uc_s = noise_pred_fn(x_in, t_in, cond=c_in).chunk(3)
                 return (uc_s + guidance_scale[1] * (noise - uc_s) + uc_r + guidance_scale[0] * (noise - uc_r)) * 0.5
 
     assert model_type in ["noise", "x_start", "v"]

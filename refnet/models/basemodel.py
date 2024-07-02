@@ -397,10 +397,10 @@ class CustomizedColorizer(CustomizedLDM):
         else:
             z, c = out
 
-        crossattn, concat = c["c_crossattn"][0], c["c_concat"][0]
+        crossattn, concat = c["c_crossattn"][0], c["c_concat"]
         B, _, H, W = z.shape
         uc_cross = self.get_unconditional_conditioning(crossattn)
-        uc_full = {"c_crossattn": [uc_cross], "c_concat": [concat]}
+        uc_full = {"c_crossattn": [uc_cross], "c_concat": concat}
         samples = self.sample(
             cond = c,
             bs = B,

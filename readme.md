@@ -7,7 +7,7 @@ Fundemental issue for this repository: [ColorizeDiffusion](https://arxiv.org/abs
 Version 1: WACV 2025 (basic reference-based training, published soon).  
 Version 1.5: Sovling spatial entangelment [ColorizeDiffusion 1.5](https://arxiv.org/html/2502.19937v1). Corresponding code will be released in a month.  
 Version 2 paper and code: Enhancing background and style transfer. Available soon.  
-Version XL: Enhancing character and foreground disentanglement. Ongoing.  
+Version XL: Ongoing.  
 
 For the details of reasons why the training is organized like this, please refer to version 3 of the arxiv paper (more detailed than WACV one).
 Model weights are available: https://huggingface.co/tellurion/colorizer.

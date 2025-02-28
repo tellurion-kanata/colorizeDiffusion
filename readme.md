@@ -5,7 +5,7 @@
 (July. 2024) 
 Fundemental issue for this repository: [ColorizeDiffusion](https://arxiv.org/abs/2401.01456).  
 Version 1: WACV 2025 (basic reference-based training, published soon).  
-Version 1.5: Sovling spatial entangelment [ColorizeDiffusion 1.5](https://arxiv.org/html/2502.19937v1). Corresponding code will be released in a month.  
+Version 1.5: Solving spatial entangelment [ColorizeDiffusion 1.5](https://arxiv.org/html/2502.19937v1). Corresponding code will be released in a month.  
 Version 2 paper and code: Enhancing background and style transfer. Available soon.  
 Version XL: Ongoing.  
 

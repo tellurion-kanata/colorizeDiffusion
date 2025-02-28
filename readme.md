@@ -3,10 +3,11 @@
 ![img](assets/teaser.png)
 
 (July. 2024) 
-Paper link for this repository: [ColorizeDiffusion](https://arxiv.org/abs/2401.01456).  
-WACV 2025 has accepted the paper (only reference-based colorization) regarding the training details of the open-source v1 model.
-We will soon release v1.5 (or v2) models, which solve the spatial entanglement and enhance background & style transfer.
-Enhancement for character-specified colorization will be done this year.
+Initial paper link for this repository: [ColorizeDiffusion](https://arxiv.org/abs/2401.01456).  
+Version 1: WACV 2025 (published soon).  
+Version 1.5: Sovling spatial entangelment [ColorizeDiffusion 1.5](https://arxiv.org/html/2502.19937v1). Corresponding version will be released in a month.  
+Version 2 paper and code: Enhancing background and style transfer. Avaible soon.  
+Version XL: Enhancing character and foreground disentanglement. Ongoing.  
 
 For the details of reasons why the training is organized like this, please refer to version 3 of the arxiv paper (more detailed than WACV one).
 Model weights are available: https://huggingface.co/tellurion/colorizer.

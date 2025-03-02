@@ -3,8 +3,8 @@
 ![img](assets/teaser.png)
 
 (July. 2024) 
-Fundemental issue for this repository: [ColorizeDiffusion](https://arxiv.org/abs/2401.01456).  
-Version 1 (WACV 2025): Basic reference-based training.  
+Fundemental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
+Version 1 (WACV 2025): [ColorizeDiffusion](https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html) Basic reference-based training.  
 Version 1.5 (CVPR 2025): Solving spatial entangelment [ColorizeDiffusion 1.5 (e-preprint)](https://arxiv.org/html/2502.19937v1). Corresponding code will be released in a month.  
 Version 2 paper and code: Enhancing background and style transfer. Available soon.  
 Version XL: Ongoing.  

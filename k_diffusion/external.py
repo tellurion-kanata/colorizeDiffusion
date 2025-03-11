@@ -133,6 +133,8 @@ class CompVisDenoiser(DiscreteEpsDDPMDenoiser):
 
     def __init__(self, model, quantize=False, device='cpu'):
         super().__init__(model, model.alphas_cumprod, quantize=quantize)
+        self.sigmas = self.sigmas.to(device)
+        self.log_sigmas = self.log_sigmas.to(device)
 
     def get_eps(self, *args, **kwargs):
         return self.inner_model.apply_model(*args, **kwargs)
@@ -172,6 +174,8 @@ class CompVisVDenoiser(DiscreteVDDPMDenoiser):
 
     def __init__(self, model, quantize=False, device='cpu'):
         super().__init__(model, model.alphas_cumprod, quantize=quantize)
+        self.sigmas = self.sigmas.to(device)
+        self.log_sigmas = self.log_sigmas.to(device)
 
     def get_v(self, x, t, cond, **kwargs):
         return self.inner_model.apply_model(x, t, cond)

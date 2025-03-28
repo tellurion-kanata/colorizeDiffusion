@@ -4,7 +4,6 @@ model:
   params:
     linear_start: 0.00085
     linear_end: 0.0120
-    parameterization: v
     timesteps: 1000
     image_size: 64
     channels: 4

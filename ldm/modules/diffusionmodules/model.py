@@ -6,7 +6,7 @@ import numpy as np
 from einops import rearrange
 from typing import Optional, Any
 
-from ldm.modules.attention import MemoryEfficientCrossAttention
+from refnet.modules.attention import MemoryEfficientAttention
 
 try:
     import xformers
@@ -126,7 +126,7 @@ class ResnetBlock(nn.Module):
                                                     stride=1,
                                                     padding=0)
 
-    def forward(self, x, temb):
+    def forward(self, x, temb=None):
         h = x
         h = self.norm1(h)
         h = nonlinearity(h)
@@ -268,7 +268,7 @@ class MemoryEfficientAttnBlock(nn.Module):
         return x+out
 
 
-class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
+class MemoryEfficientCrossAttentionWrapper(MemoryEfficientAttention):
     def forward(self, x, context=None, mask=None):
         b, c, h, w = x.shape
         x = rearrange(x, 'b c h w -> b (h w) c')
@@ -277,16 +277,18 @@ class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
         return x + out
 
 
-def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
+def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None, log=False):
     assert attn_type in ["vanilla", "vanilla-xformers", "memory-efficient-cross-attn", "linear", "none"], f'attn_type {attn_type} unknown'
     if XFORMERS_IS_AVAILBLE and attn_type == "vanilla":
         attn_type = "vanilla-xformers"
-    print(f"making attention of type '{attn_type}' with {in_channels} in_channels")
+    if log:
+        print(f"making attention of type '{attn_type}' with {in_channels} in_channels")
     if attn_type == "vanilla":
         assert attn_kwargs is None
         return AttnBlock(in_channels)
     elif attn_type == "vanilla-xformers":
-        print(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
+        if log:
+            print(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
         return MemoryEfficientAttnBlock(in_channels)
     elif type == "memory-efficient-cross-attn":
         attn_kwargs["query_dim"] = in_channels

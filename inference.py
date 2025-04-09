@@ -4,7 +4,8 @@ from tqdm import tqdm
 from options import Options
 from util import load_config
 from data.dataloader import create_dataloader
-from sgm.util import instantiate_from_config, default
+from refnet.util import instantiate_from_config, default
+from refnet.modules.unet import hack_inference_forward
 
 
 
@@ -42,14 +43,19 @@ if __name__ == '__main__':
     # setup model and data loader
     model = instantiate_from_config(configs.model).cuda().eval()
     model.switch_to_fp16()
+    # model.proj.half()
+    # model.img_embedder.half()
+    hack_inference_forward(model.model.diffusion_model)
+    model.cond_stage_model = model.cond_stage_model.to(model.half_precision_dtype)
+    model.first_stage_model = model.first_stage_model.to(model.half_precision_dtype)
     dataloader, data_size = create_dataloader(opt, configs.dataloader, 1, eval_load_size=opt.eval_load_size)
-    model.init_from_ckpt(opt.load_checkpoint, ignore_keys=opt.ignore_keys)
+    model.init_from_ckpt(opt.pretrained, ignore_keys=opt.ignore_keys, logging=opt.load_logging)
 
     vars_opt = vars(opt)
     vis_logger = logger.ImageLogger(**vars_opt)
 
     model.training = False
     for idx, batch in enumerate(tqdm(dataloader)):
-        for key in batch.keys():
-            batch[key] = batch[key].cuda()
+        for key in batch:
+            batch[key] = batch[key].cuda().to(model.dtype)
         vis_logger.on_test_batch_end(model, batch, idx)

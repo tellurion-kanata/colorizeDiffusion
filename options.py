@@ -4,7 +4,7 @@ import shutil
 import json
 
 from datetime import datetime
-from refnet.models.basemodel import get_sampler_list
+from refnet.sampling import get_sampler_list, get_noise_schedulers
 
 def list_of_bools(value):
     try:
@@ -46,8 +46,8 @@ class Options():
                                  help='Dataset path')
         self.parser.add_argument('--batch_size', '-bs', default=32, type=int,
                                  help='Number of batch size')
-        self.parser.add_argument('--load_checkpoint', '-ckpt', type=str, default=None,
-                                 help='Checkpoint to load. Default is \'latest.safetensors\' under the checkpoint directory.')
+        self.parser.add_argument('--pretrained', '-pt', type=str, default=None,
+                                 help='Path of pre-trained model weights')
         self.parser.add_argument('--num_threads', '-nt', type=int, default=0,
                                  help='Number of threads when reading data')
         self.parser.add_argument('--save_path', type=str, default='./checkpoints',
@@ -66,8 +66,12 @@ class Options():
                                  help='Initialize global seed.')
         self.parser.add_argument('--ignore_keys', '-ik', type=str, default=[], nargs='*',
                                  help="Ignore keys when initialize from checkpoint.")
-        self.parser.add_argument('--sampler', type=str, default='dpm_vp', choices=get_sampler_list(),
+        self.parser.add_argument('--sampler', type=str, default='diffuser_dpm', choices=get_sampler_list(),
                                  help="Sampler used to generate images.")
+        self.parser.add_argument('--scheduler', type=str, default='Automatic', choices=get_noise_schedulers(),
+                                 help="Sampler used to generate images.")
+        self.parser.add_argument('--load_logging', '-log', action='store_true',
+                                 help="Logging missing and unexpected parameters when loading from a checkpoint.")
 
     def modify_options(self):
         if not self.eval:
@@ -76,12 +80,12 @@ class Options():
             self.add_testing_options()
 
     def add_training_options(self):
-        self.parser.add_argument('--resume', action='store_true',
-                                 help='Resume training.')
         self.parser.add_argument('--fitting_model', '-fm', action='store_true',
                                  help='Fit the checkpoint states to the new model.')
 
         # training options
+        self.parser.add_argument('--load_checkpoint', '-ckpt', type=str, default=None,
+                                 help='Checkpoint to load.')
         self.parser.add_argument('--learning_rate', '-lr', default=1e-5, type=float,
                                  help="Learning rate")
         self.parser.add_argument('--dynamic_lr', '-dlr', action='store_true',
@@ -102,13 +106,15 @@ class Options():
                                  help='Sample image every # steps')
         self.parser.add_argument('--save_first_step', action='store_true',
                                  help='Save the model in the beginning of a training')
+        self.parser.add_argument('--not_save_first_step_epoch', action='store_true',
+                                 help='Save the model in the begining of each epoch')
         self.parser.add_argument('--save_freq', '-sf', type=int, default=1,
                                  help='Saving network states per # epochs')
         self.parser.add_argument('--save_freq_step', '-sfs', type=int, default=5000,
                                  help='Saving latest network states per # steps')
         self.parser.add_argument('--start_save_ep', '-sts', type=int, default=0,
                                  help='Start to save model each epoch after training # epochs')
-        self.parser.add_argument('--top_k', type=int, default=5,
+        self.parser.add_argument('--top_k', type=int, default=4,
                                  help='Save latest #-checkpoints')
         self.parser.add_argument('--print_freq', '-pf', type=int, default=1000,
                                  help='Print training states per iterations')
@@ -133,8 +139,6 @@ class Options():
         opt.model_config_file = os.path.join(opt.ckpt_path, 'model_config.yaml')
         os.makedirs(opt.ckpt_path, exist_ok=True)
 
-        if opt.load_checkpoint is None:
-            opt.load_checkpoint = os.path.join(opt.ckpt_path, 'latest.safetensors')
         if opt.config_file is not None:
             shutil.copy(opt.config_file, os.path.join(opt.ckpt_path, 'model_config.yaml'))
 

@@ -1,21 +1,11 @@
 import torch
 import torch.nn as nn
 
-from ldm.modules.attention import SpatialTransformer
-from ldm.modules.diffusionmodules.util import (
-    conv_nd,
-    linear,
-    zero_module,
-    timestep_embedding,
-)
-from ldm.modules.diffusionmodules.openaimodel import (
-    UNetModel,
-    ResBlock,
-    Downsample,
-    AttentionBlock,
-    TimestepEmbedSequential,
-)
-from ldm.util import exists
+from refnet.modules.unet import UNetModel, TimestepEmbedSequential
+from refnet.modules.transformer import SpatialTransformer
+from refnet.ldm.util import conv_nd, linear, zero_module, timestep_embedding
+from refnet.ldm.openaimodel import ResBlock, Downsample, AttentionBlock
+from refnet.util import exists
 
 """
     Forked from ControlNet v1.1 nightly
@@ -25,8 +15,6 @@ from ldm.util import exists
 
 class ControlledUnetModel(UNetModel):
     def forward(self, x, timesteps=None, context=None, control=None, only_mid_control=False, **kwargs):
-        context = context.to(self.dtype) if exists(context) else context
-
         hs = []
         with torch.no_grad():
             t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False).to(self.dtype)
@@ -52,6 +40,9 @@ class ControlledUnetModel(UNetModel):
 
 
 class ControlNet(nn.Module):
+    transformers = {
+        "vanilla": SpatialTransformer,
+    }
     def __init__(
             self,
             image_size,
@@ -81,8 +72,10 @@ class ControlNet(nn.Module):
             num_attention_blocks=None,
             disable_middle_self_attn=False,
             use_linear_in_transformer=False,
+            transformer_type="vanilla"
     ):
         super().__init__()
+        transformer = self.transformers[transformer_type]
         if use_spatial_transformer:
             assert context_dim is not None, 'Fool!! You forgot to include the dimension of your cross-attention conditioning...'
 
@@ -128,7 +121,6 @@ class ControlNet(nn.Module):
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.use_checkpoint = use_checkpoint
-        self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
@@ -208,7 +200,7 @@ class ControlNet(nn.Module):
                                 num_heads=num_heads,
                                 num_head_channels=dim_head,
                                 use_new_attention_order=use_new_attention_order,
-                            ) if not use_spatial_transformer else SpatialTransformer(
+                            ) if not use_spatial_transformer else transformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint
@@ -267,7 +259,7 @@ class ControlNet(nn.Module):
                 num_heads=num_heads,
                 num_head_channels=dim_head,
                 use_new_attention_order=use_new_attention_order,
-            ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
+            ) if not use_spatial_transformer else transformer(  # always uses a self-attn
                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                 disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
                 use_checkpoint=use_checkpoint
@@ -296,7 +288,6 @@ class ControlNet(nn.Module):
         outs = []
 
         h = x.type(self.dtype)
-        context = context.type(self.dtype)
         for module, zero_conv in zip(self.input_blocks, self.zero_convs):
             if guided_hint is not None:
                 h = module(h, emb, context)
@@ -314,8 +305,6 @@ class ControlNet(nn.Module):
 
 class InferenceControlledUnetModel(ControlledUnetModel):
     def forward(self, x, timesteps=None, context=None, control=None, only_mid_control=False, **kwargs):
-        context = context.type(self.dtype) if exists(context) else context
-
         hs = []
         with torch.no_grad():
             t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
@@ -351,7 +340,6 @@ class InferenceControlNet(ControlNet):
         outs = []
 
         h = x.type(self.dtype)
-        context = context.type(self.dtype)
         for module, zero_conv in zip(self.input_blocks, self.zero_convs):
             if guided_hint is not None:
                 h = module(h, emb, context)

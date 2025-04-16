@@ -162,22 +162,7 @@ class Trainer(ColorizerTrainer):
             xmr = xmr.clamp(0, 1)
 
             # Background bleaching
-            x = background_bleaching(x, xs, xc, xms, xmr, thresh_s, thresh_r, self.p_white_bg, self.dtype)
-            white_bg_idx = append_dims(torch.rand((bs,), device=xc.device) < self.p_white_bg, xc.ndim)
-            white_bg = torch.ones_like(xc) * (
-                    torch.rand((bs, 1, 1, 1), device=xc.device, dtype=self.dtype) * 0.02 + 0.98
-            )
-            x = torch.where(
-                white_bg_idx,
-                torch.where(xms > append_dims(thresh_s, xms.ndim), x, torch.ones_like(x)),
-                x
-            )
-            xs = torch.where(xms > append_dims(thresh_s, xms.ndim), xs, -torch.ones_like(xs))
-            xc_bg = torch.where(
-                white_bg_idx,
-                white_bg,
-                torch.where(xmr <= append_dims(thresh_r, xmr.ndim), xc, torch.ones_like(xc))
-            )
+            x, xs, xc_bg = background_bleaching(x, xs, xc, xms, xmr, thresh_s, thresh_r, self.p_white_bg, self.dtype)
             z_bg = self.get_first_stage_encoding(warp_resize(xc_bg, (x.shape[2], x.shape[3])))
             c_bg = self.get_learned_embedding(xc_bg, self.token_type)
             c_concat = torch.cat([c, c_bg], 1)

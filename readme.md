@@ -43,20 +43,24 @@ python -u app.py
 The default server address is http://localhost:7860.
 
 #### Important inference options
-| Options                   | Description                                                                                                     |
-|:--------------------------|:----------------------------------------------------------------------------------------------------------------|
-| Mask guide mode           | Activate mask guided attention and corresponding lora weights for colorization.                                 | 
-| Crossattn scale           | Used to diminish all kinds of artifacts caused by the distribution problem.                                     |
-| Pad reference with margin | Used to diminish spatial entanglement, pad reference to T times of current width.                               |
-| Reference guidance scale  | Classifier-free guidance scale of the reference image, suggested 5.                                             |
-| Preprocessor              | Preprocessing for the sketch input. **Extract** is suggested if the sketch input is complicated pencil drawing. |
-| Sketch guidance scale     | Classifier-free guidance scale of the sketch image, suggested 1.                                                |
-| Attention injection       | Strengthen similarity with reference through self-injection.                                                    |
-| Visualize                 | Used for local manipulation. Visualize the regions selected by each threshold.                                  |
+| Options               | Description                                                                                       |
+|:----------------------|:--------------------------------------------------------------------------------------------------|
+| BG enhance            | Low-level feature injection for v2 models.                                                        |
+| FG enhance            | Useless for currently open-sourced models.                                                        |
+| Reference strength    | Decreasing it to increase semantic fidelity to sketch inputs.                                     |
+| Foreground strength   | Similar to reference strength but only for foreground region. Need to activate FG or BG enhance.  |
+| Preprocessor          | Sketch preprocessing. **Extract** is suggested if the sketch input is complicated pencil drawing. |
+| Line extractor        | Line extractors used when preprocessor is **Extract**.                                            |
+| Sketch guidance scale | Classifier-free guidance scale of the sketch image, suggested 1.                                  |
+| Attention injection   | Noised low-level feature injection, 2x inference time.                                            |
 
-For artifacts like spatial entanglement like this
-![img](assets/entanglement.png)  
-Please activate background enhance (optionally with foreground enhance).
+
+### 768-level Cross-content colorization results (from v2)
+![img](assets/cross-1.png)
+![img](assets/cross-2.png)
+### 1536-level Character colorization results (from XL)
+![img](assets/disentanglement2.png)
+![img](assets/demon.png)
 
 ## Manipulation
 

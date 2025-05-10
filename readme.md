@@ -15,6 +15,9 @@
 
 (April. 2025)
 Official implementation of Colorize Diffusion.  
+
+Colorize Diffusion is a SD-based colorization framework that can achieve high-quality colorization results with arbitrary input pairs.
+
 Fundamental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
 ***Version 1*** - Base training, 512px. Released, ckpt starts with **mult**.  
 ***Version 1.5*** - Solving spatial entanglement, 512px. Released, ckpt starts with **switch**.  
@@ -97,6 +100,52 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
 | Threshold2-Threshold3		| Select unrelated regions. Indicated by orange.                                                                                                                                                                    |
 | \>Threshold3				| Select most unrelated regions. Indicated by brown.                                                                                                                                                                |
 |Add| Click add to save current manipulation in the sequence.        |  
+
+
+## Training
+Our implementation is based on accelerate and Deepspeed.  
+Before starting a training, first collect data and organize your training dataset as follows:
+
+```
+[dataset_path]
+├── image_list.json    # Optioanlly for image indexing
+├── color/             # Color images
+│   ├── 0001.zip        
+|   |   ├── 10001.png
+|   |   ├── 100001.jpg
+│   |   └── ...
+│   ├── 0002.zip
+│   └── ...
+├── sketch             # Sketch images
+│   ├── 0001.zip
+|   |   ├── 10001.png
+|   |   ├── 100001.jpg
+│   |   └── ...
+│   ├── 0002.zip
+│   └── ...
+└── mask               # Mask images (required for fg-bg training)
+    ├── 0001.zip
+    |   ├── 10001.png
+    |   ├── 100001.jpg
+    |   └── ...
+    ├── 0002.zip
+    └── ...
+```
+For details of dataset organization, check `data/dataloader.py`.  
+Training command example:
+```
+accelerate launch --config_file [accelerate_config_file] \
+    train.py \
+    --name base \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/train/sd2.1/mult.yaml \
+    -pt [pretrained_model_path]
+```
+Refer to `options.py` for training/inference/validation arguments.  
+Note that the `batch size` here is micro batch size per gpu. If you run the command on 8 gpus, the total batch size is 512.  
+
 
 ## Code reference
 1. [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)

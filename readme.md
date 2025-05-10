@@ -103,12 +103,12 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
 
 
 ## Training
-Our implementation is based on accelerate and Deepspeed.  
+Our implementation is based on Accelerate and Deepspeed.  
 Before starting a training, first collect data and organize your training dataset as follows:
 
 ```
 [dataset_path]
-├── image_list.json    # Optioanlly for image indexing
+├── image_list.json    # Optionally for image indexing
 ├── color/             # Color images
 │   ├── 0001.zip        
 |   |   ├── 10001.png

@@ -45,7 +45,8 @@ The default server address is http://localhost:7860.
 #### Important inference options
 | Options               | Description                                                                                       |
 |:----------------------|:--------------------------------------------------------------------------------------------------|
-| BG enhance            | Low-level feature injection for v2 models.                                                        |
+| BG enhance            | Low-level feature injection for backgroundsv2 models.                                             |
+| Style enhance         | Low-level feature injection for style details in v2 models.                                       |
 | FG enhance            | Useless for currently open-sourced models.                                                        |
 | Reference strength    | Decreasing it to increase semantic fidelity to sketch inputs.                                     |
 | Foreground strength   | Similar to reference strength but only for foreground region. Need to activate FG or BG enhance.  |

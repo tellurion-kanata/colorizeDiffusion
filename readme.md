@@ -1,55 +1,69 @@
 # ColorizeDiffusion: Adjustable Sketch Colorization with Reference Image and Text
 
+<div align="center">
+
+[![arXiv Paper](https://img.shields.io/badge/arXiv-2407.15886%20(base)-B31B1B?style=flat&logo=arXiv)](https://arxiv.org/abs/2401.01456)
+[![WACV 2025](https://img.shields.io/badge/WACV%202025-v1-0CA4A5?style=flat&logo=Semantic%20Web)](https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html)
+[![arXiv v1.5 Paper](https://img.shields.io/badge/arXiv-2502.19937%20(v1.5)-B31B1B?style=flat&logo=arXiv)](https://arxiv.org/abs/2502.19937)
+[![arXiv v2 Paper](https://img.shields.io/badge/arXiv-2504.06895%20(v2)-B31B1B?style=flat&logo=arXiv)](https://arxiv.org/abs/2504.06895)
+[![Model Weights](https://img.shields.io/badge/Hugging%20Face-Model%20Weights-FF9D00?style=flat&logo=Hugging%20Face)](https://huggingface.co/tellurion/ColorizeDiffusion/tree/main)
+[![License](https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-4CAF50?style=flat&logo=Creative%20Commons)](https://github.com/tellurion-kanata/colorizeDiffusion/blob/master/LICENSE)
+
+</div>
+
 ![img](assets/teaser.png)
 
-(March. 2025)
-Fundemental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
-Version 1 - trained with 512px (WACV 2025): [ColorizeDiffusion](https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html) Basic reference-based training. Released.  
-Version 1.5 - trained with 512px (CVPR 2025): [ColorizeDiffusion 1.5 (e-preprint)](https://arxiv.org/html/2502.19937v1) Solving spatial entangelment. Released.  
-Version 2 - trained with 768px [ColorizeDiffusion 2 (e-print)](https://arxiv.org/abs/2504.06895): Enhancing background and style transfer. Released.
-Version XL - trained with 1024px : Enhancing embedding guidance for character colorization, geometry disentanglement. Available soon.  
+(April. 2025)
+Official implementation of Colorize Diffusion.  
+Fundamental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
+***Version 1*** - Base training, 512px. Released, ckpt starts with **mult**.  
+***Version 1.5*** - Solving spatial entanglement, 512px. Released, ckpt starts with **switch**.  
+***Version 2*** - Enhancing background and style transfer, 768px. Released, ckpt starts with **v2**.  
+***Version XL*** - Enhancing embedding guidance for character colorization, geometry disentanglement, 1024px. Available soon.  
 
-Model weights are available: [https://huggingface.co/tellurion/ColorizeDiffusion/tree/main](https://huggingface.co/tellurion/ColorizeDiffusion/tree/main).
-
-## Implementation Details
-The repository offers the implementation of ColorizeDiffusion.  
-Now, only the noisy model introduced in the paper, which utilizes the local tokens.
 
 ## Getting Start
-To utilize the code in this repository, ensure that you have installed the required dependencies as specified in the requirements.
 
-### To install and run:
+-------------------------------------------------------------------------------------------
 ```shell
 conda env create -f environment.yaml
 conda activate hf
 ```
 
-## User Interface:
-We also provided a Web UI based on Gradio UI. To run it, just:
+## User Interface
+
+-------------------------------------------------------------------------------------------
+We implement a fully-featured UI. To run it, just:
 ```shell
 python -u app.py
 ```
-Then you can browse the UI in http://localhost:7860/.
+The default server address is http://localhost:7860.
 
-### Inference:
--------------------------------------------------------------------------------------------
-#### Important inference options:
-| Options                   | Description                                                                       |
-|:--------------------------|:----------------------------------------------------------------------------------|
-| Mask guide mode           | Activate mask guided attention and corresponding lora weights for colorization.   | 
-| Crossattn scale           | Used to diminish all kinds of artifacts caused by the distribution problem.       |
-| Pad reference with margin | Used to diminish spatial entanglement, pad reference to T times of current width. |
-| Reference guidance scale  | Classifier-free guidance scale of the reference image, suggested 5.               |
-| Sketch guidance scale     | Classifier-free guidance scale of the sketch image, suggested 1.                  |
-| Attention injection       | Strengthen similarity with reference.                                             |
-| Visualize                 | Used for local manipulation. Visualize the regions selected by each threshold.    |
+#### Important inference options
+| Options                   | Description                                                                                                     |
+|:--------------------------|:----------------------------------------------------------------------------------------------------------------|
+| Mask guide mode           | Activate mask guided attention and corresponding lora weights for colorization.                                 | 
+| Crossattn scale           | Used to diminish all kinds of artifacts caused by the distribution problem.                                     |
+| Pad reference with margin | Used to diminish spatial entanglement, pad reference to T times of current width.                               |
+| Reference guidance scale  | Classifier-free guidance scale of the reference image, suggested 5.                                             |
+| Preprocessor              | Preprocessing for the sketch input. **Extract** is suggested if the sketch input is complicated pencil drawing. |
+| Sketch guidance scale     | Classifier-free guidance scale of the sketch image, suggested 1.                                                |
+| Attention injection       | Strengthen similarity with reference through self-injection.                                                    |
+| Visualize                 | Used for local manipulation. Visualize the regions selected by each threshold.                                  |
 
-For artifacts like spatial entanglement (the distribution problem discussed in the paper) like this
+For artifacts like spatial entanglement like this
 ![img](assets/entanglement.png)  
 Please activate background enhance (optionally with foreground enhance).
 
-### Manipulation:
-The colorization results can be manipulated using text prompts.
+## Manipulation
+
+-------------------------------------------------------------------------------------------
+The colorization results can be manipulated using text prompts, see [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).
+
+It is now deactivated by default. To activate it, use
+```shell
+python -u app.py -manipulate
+```
 
 For local manipulations, a visualization is provided to show the correlation between each prompt and tokens in the reference image.
 
@@ -67,7 +81,7 @@ The manipulation result and correlation visualization of the settings:
 ![img](assets/preview2.png)
 As you can see, the manipluation unavoidably changed some unrelated regions as it is taken on the reference embeddings.
 
-#### Manipulation options:
+#### Manipulation options
 | Options                   | Description                                                                                                                                                                                                       |
 | :-----                    |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Group index               | The index of selected manipulation sequences's parameter group.                                                                                                                                                   |
@@ -126,4 +140,3 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
       journal = {arXiv e-prints},
       doi = {10.48550/arXiv.2504.06895},
 }
-```

@@ -9,7 +9,7 @@ Version 1.5 - trained with 512px (CVPR 2025): [ColorizeDiffusion 1.5 (e-preprint
 Version 2 - trained with 768px [ColorizeDiffusion 2 (e-print)](https://arxiv.org/abs/2504.06895): Enhancing background and style transfer. Released.
 Version XL - trained with 1024px : Enhancing embedding guidance for character colorization, geometry disentanglement. Available soon.  
 
-Model weights are available: https://huggingface.co/tellurion/colorizer.
+Model weights are available: [https://huggingface.co/tellurion/ColorizeDiffusion/tree/main](https://huggingface.co/tellurion/ColorizeDiffusion/tree/main).
 
 ## Implementation Details
 The repository offers the implementation of ColorizeDiffusion.  

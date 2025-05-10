@@ -43,17 +43,17 @@ python -u app.py
 The default server address is http://localhost:7860.
 
 #### Important inference options
-| Options               | Description                                                                                       |
-|:----------------------|:--------------------------------------------------------------------------------------------------|
-| BG enhance            | Low-level feature injection for backgroundsv2 models.                                             |
-| Style enhance         | Low-level feature injection for style details in v2 models.                                       |
-| FG enhance            | Useless for currently open-sourced models.                                                        |
-| Reference strength    | Decreasing it to increase semantic fidelity to sketch inputs.                                     |
-| Foreground strength   | Similar to reference strength but only for foreground region. Need to activate FG or BG enhance.  |
-| Preprocessor          | Sketch preprocessing. **Extract** is suggested if the sketch input is complicated pencil drawing. |
-| Line extractor        | Line extractors used when preprocessor is **Extract**.                                            |
-| Sketch guidance scale | Classifier-free guidance scale of the sketch image, suggested 1.                                  |
-| Attention injection   | Noised low-level feature injection, 2x inference time.                                            |
+| Options               | Description                                                                                        |
+|:----------------------|:---------------------------------------------------------------------------------------------------|
+| BG enhance            | Low-level feature injection for backgrounds in v2 models.                                          |
+| Style enhance         | Low-level feature injection for style details in v2 models.                                        |
+| FG enhance            | Useless for currently open-sourced models.                                                         |
+| Reference strength    | Decreasing it to increase semantic fidelity to sketch inputs.                                      |
+| Foreground strength   | Similar to reference strength but only for foreground region. Need to activate FG or BG enhance.   |
+| Preprocessor          | Sketch preprocessing. **Extract** is suggested if the sketch input is complicated pencil drawing.  |
+| Line extractor        | Line extractors used when preprocessor is **Extract**.                                             |
+| Sketch guidance scale | Classifier-free guidance scale of the sketch image, suggested 1.                                   |
+| Attention injection   | Noised low-level feature injection, 2x inference time.                                             |
 
 
 ### 768-level Cross-content colorization results (from v2)

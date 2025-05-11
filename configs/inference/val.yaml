@@ -10,7 +10,7 @@ model:
     control_key: control
     cond_stage_key: reference
     scale_factor: 0.18215
-#    parameterization: v
+    parameterization: eps
 
     unet_config:
       target: refnet.modules.unet.DualCondUNet

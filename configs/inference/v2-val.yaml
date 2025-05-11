@@ -5,7 +5,7 @@ model:
     linear_start: 0.00085
     linear_end: 0.0120
     timesteps: 1000
-    image_size: 64
+    image_size: 96
     channels: 4
     control_key: control
     cond_stage_key: reference
@@ -115,8 +115,8 @@ dataloader:
       resize: true
       jitter: false
       rotate_range: 45
-    load_size: 512
-    crop_size: 512
+    load_size: 768
+    crop_size: 768
     keep_ratio: false
     inverse_grayscale: true
   shuffle: false

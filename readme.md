@@ -107,7 +107,7 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
 |Add| Click add to save current manipulation in the sequence.        |  
 
 
-## Training
+## Training & inference & validation
 Our implementation is based on Accelerate and Deepspeed.  
 Before starting a training, first collect data and organize your training dataset as follows:
 
@@ -148,8 +148,39 @@ accelerate launch --config_file [accelerate_config_file] \
     -cfg configs/train/sd2.1/mult.yaml \
     -pt [pretrained_model_path]
 ```
-Refer to `options.py` for training/inference/validation arguments.  
-Note that the `batch size` here is micro batch size per gpu. If you run the command on 8 gpus, the total batch size is 512.  
+Note that the `batch size` here is micro batch size per gpu. If you run the command on 8 gpus, the total batch size is 512.
+
+Inference example:
+```
+python inference.py
+    --name inf \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/inference/val.yaml \ (for mult-eps models)
+    -cfg configs/inference/v2-val.yaml \ (for v2 models)
+    -pt [pretrained_model_path]
+    -gs 5
+```
+
+Validation example:
+```
+python inference.py
+    --name val \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/inference/val.yaml \ (for mult/switch-eps models)
+    -cfg configs/inference/v2-val.yaml \ (for v2 models)
+    -pt [pretrained_model_path]
+    -gs 5
+    -val
+```
+
+The difference between inference and validation modes is that validation mode use randomly selected images as reference inputs.
+Refer to `options.py` for full arguments.  
+
+  
 
 
 ## Code reference

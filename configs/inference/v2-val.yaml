@@ -115,8 +115,8 @@ dataloader:
       resize: true
       jitter: false
       rotate_range: 45
-    load_size: 1024
-    crop_size: 1024
+    load_size: 512
+    crop_size: 512
     keep_ratio: false
     inverse_grayscale: true
   shuffle: false

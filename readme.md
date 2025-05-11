@@ -114,7 +114,7 @@ Before starting a training, first collect data and organize your training datase
 ```
 [dataset_path]
 ├── image_list.json    # Optionally for image indexing
-├── color/             # Color images
+├── color              # Color images
 │   ├── 0001.zip        
 |   |   ├── 10001.png
 |   |   ├── 100001.jpg

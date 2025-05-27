@@ -53,8 +53,8 @@ class OpenCLIP(nn.Module):
         return self.visual.encode(*args, **kwargs)
 
     @torch.no_grad()
-    def encode_text(self, text, normalize=True):
-        return self.transformer(text, normalize)
+    def encode_text(self, text, projection=True, normalize=True):
+        return self.transformer(text, projection, normalize)
 
     def calculate_scale(self, v: torch.Tensor, t: torch.Tensor):
         """

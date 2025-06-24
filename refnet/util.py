@@ -1,5 +1,7 @@
 import torch
 import torch.nn.functional as F
+import torchvision.transforms.functional as tf
+from torch.utils.checkpoint import checkpoint
 
 import numpy as np
 import numpy.random as random
@@ -8,6 +10,7 @@ import importlib
 
 from tqdm import tqdm
 from inspect import isfunction
+from functools import wraps
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -15,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 def exists(x):
     return x is not None
 
-def append_dims(x, target_dims):
+def append_dims(x, target_dims) -> torch.Tensor:
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
@@ -30,8 +33,8 @@ def default(val, d):
         return val
     return d() if isfunction(d) else d
 
-def zero_drop(x, p):
-    return append_dims(torch.bernoulli((1 - p) * torch.ones(x.shape[0], device=x.device, dtype=x.dtype)), x.ndim)
+def zero_drop(x, p, dim=0):
+    return append_dims(torch.bernoulli((1 - p) * torch.ones(x.shape[dim], device=x.device, dtype=x.dtype)), x.ndim)
 
 
 def expand_to_batch_size(x, bs):
@@ -62,10 +65,24 @@ def instantiate_from_config(config):
 def scaled_resize(x: torch.Tensor, scale_factor, interpolation_mode="bicubic"):
     return F.interpolate(x, scale_factor=scale_factor, mode=interpolation_mode)
 
+def get_crop_scale(h, w, bgh, bgw):
+    gen_aspect = w / h
+    bg_aspect = bgw / bgh
+    if gen_aspect > bg_aspect:
+        cw = 1.0
+        ch = (h / w) * (bgw / bgh)
+    else:
+        ch = 1.0
+        cw = (w / h) * (bgh / bgw)
+    return ch, cw
 
 def warp_resize(x: torch.Tensor, target_size, interpolation_mode="bicubic"):
     assert len(x.shape) == 4
     return F.interpolate(x, size=target_size, mode=interpolation_mode)
+
+def resize_and_crop(x: torch.Tensor, ch, cw, th, tw):
+    b, c, h, w = x.shape
+    return tf.resized_crop(x, 0, 0, int(ch * h), int(cw * w), size=[th, tw])
 
 
 def fitting_weights(model, sd):
@@ -91,27 +108,36 @@ def fitting_weights(model, sd):
             new_param = param.clone()
             old_param = sd[name]
             if len(new_shape) == 1:
-                for i in range(new_param.shape[0]):
-                    new_param[i] = old_param[i % old_shape[0]]
+                # Vectorized 1D case
+                new_param = old_param[torch.arange(new_shape[0]) % old_shape[0]]
             elif len(new_shape) >= 2:
-                for i in range(new_param.shape[0]):
-                    for j in range(new_param.shape[1]):
-                        new_param[i, j] = old_param[i % old_shape[0], j % old_shape[1]]
+                # Vectorized 2D case
+                i_indices = torch.arange(new_shape[0])[:, None] % old_shape[0]
+                j_indices = torch.arange(new_shape[1])[None, :] % old_shape[1]
 
-                n_used_old = torch.ones(old_shape[1])
-                for j in range(new_param.shape[1]):
-                    n_used_old[j % old_shape[1]] += 1
-                n_used_new = torch.zeros(new_shape[1])
-                for j in range(new_param.shape[1]):
-                    n_used_new[j] = n_used_old[j % old_shape[1]]
+                # Use advanced indexing to extract all values at once
+                new_param = old_param[i_indices, j_indices]
 
-                n_used_new = n_used_new[None, :]
+                # Count how many times each old column is used
+                n_used_old = torch.bincount(
+                    torch.arange(new_shape[1]) % old_shape[1],
+                    minlength=old_shape[1]
+                )
+
+                # Map to new shape
+                n_used_new = n_used_old[torch.arange(new_shape[1]) % old_shape[1]]
+
+                # Reshape for broadcasting
+                n_used_new = n_used_new.reshape(1, new_shape[1])
                 while len(n_used_new.shape) < len(new_shape):
                     n_used_new = n_used_new.unsqueeze(-1)
-                new_param /= n_used_new
+
+                # Normalize
+                new_param = new_param / n_used_new
 
             sd[name] = new_param
     return sd
+
 
 def count_params(model, verbose=False):
     total_params = sum(p.numel() for p in model.parameters())
@@ -155,3 +181,54 @@ def log_txt_as_img(wh, xc, size=10):
     txts = np.stack(txts)
     txts = torch.tensor(txts)
     return txts
+
+
+def background_bleaching(x, xs, xc, xms, xmr, thresh_s, thresh_r, p, dtype=torch.float32):
+    bs = xc.shape[0]
+    thresh_s, thresh_r = append_dims(thresh_s, xms.ndim), append_dims(thresh_r, xms.ndim)
+    white_bg_idx = append_dims(torch.rand((bs,), device=xc.device) < p, xc.ndim)
+    white_bg = torch.ones_like(xc) * (
+            torch.rand((bs, 1, 1, 1), device=xc.device, dtype=dtype) * 0.05 + 0.95
+    )
+    x = torch.where(
+        white_bg_idx,
+        torch.where(xms > thresh_s, x, torch.ones_like(x)),
+        x
+    )
+    xs = torch.where(xms > thresh_s, xs, -torch.ones_like(xs))
+    xc_bg = torch.where(
+        white_bg_idx,
+        white_bg,
+        torch.where(xmr <= thresh_r, xc, torch.ones_like(xc))
+    )
+    return x, xs, xc_bg
+
+
+def mask_thresholding(mask: torch.Tensor, ts):
+    if isinstance(ts, torch.Tensor):
+        ts = append_dims(ts, mask.ndim)
+    return torch.where(mask > ts, torch.ones_like(mask), torch.zeros_like(mask))
+
+
+def autocast(f, enabled=True):
+    def do_autocast(*args, **kwargs):
+        with torch.cuda.amp.autocast(
+            enabled=enabled,
+            dtype=torch.get_autocast_gpu_dtype(),
+            cache_enabled=torch.is_autocast_cache_enabled(),
+        ):
+            return f(*args, **kwargs)
+
+    return do_autocast
+
+
+def checkpoint_wrapper(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if not hasattr(self, 'checkpoint') or self.checkpoint:
+            def bound_func(*args, **kwargs):
+                return func(self, *args, **kwargs)
+            return checkpoint(bound_func, *args, use_reentrant=False, **kwargs)
+        else:
+            return func(self, *args, **kwargs)
+    return wrapper

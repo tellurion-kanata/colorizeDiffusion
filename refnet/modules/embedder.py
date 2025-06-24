@@ -269,9 +269,9 @@ class FrozenOpenCLIPEmbedder(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
-    def forward(self, text, normalize=True):
+    def forward(self, text, projection=True, normalize=True):
         tokens = open_clip.tokenize(text)
-        z = self.encode_with_transformer(tokens.to(self.device), normalize)
+        z = self.encode_with_transformer(tokens.to(self.device), projection, normalize)
         return z
 
     def encode_with_transformer(self, text, projection=True, normalize=False):

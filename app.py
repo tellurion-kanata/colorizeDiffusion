@@ -9,6 +9,7 @@ links = {
     "base": "https://arxiv.org/abs/2401.01456",
     "v1": "https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html",
     "v1.5": "https://arxiv.org/abs/2502.19937v1",
+    "v2": "https://arxiv.org/abs/2504.06895",
     "weights": "https://huggingface.co/tellurion/colorizer/tree/main",
     "github": "https://github.com/tellurion-kanata/colorizeDiffusion",
 }
@@ -22,6 +23,7 @@ def app_options():
     parser.add_argument("--not_show_error", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--enable_text_manipulation", '-manipulate', action="store_true")
+    parser.add_argument("--full", action="store_true")
     return parser.parse_args()
 
 
@@ -29,13 +31,14 @@ def init_interface(opt, *args, **kwargs) -> None:
     sampler_list = get_sampler_list()
     scheduler_list = get_noise_schedulers()
 
-    img_with_mask = partial(gr.Image, type="pil", height=300, interactive=True, show_label=True)
+    img_block = partial(gr.Image, type="pil", height=300, interactive=True, show_label=True, format="png")
     with gr.Blocks(
             title="Colorize Diffusion",
             css_paths="backend/style.css",
             theme=gr.themes.Ocean(),
             elem_id="main-interface",
-            analytics_enabled=False
+            analytics_enabled=False,
+            fill_width=True
     ) as block:
         with gr.Row(elem_id="header-row", equal_height=True, variant="panel"):
             gr.Markdown(f"""<div class="header-container">
@@ -49,6 +52,9 @@ def init_interface(opt, *args, **kwargs) -> None:
                     </a>
                     <a href="{links['v1.5']}" target="_blank">
                         <img src="https://img.shields.io/badge/arXiv-2502.19937 (v1.5)-B31B1B?style=flat&logo=arXiv" alt="arXiv v1.5 Paper">
+                    </a>
+                    <a href="{links['v2']}" target="_blank">
+                        <img src="https://img.shields.io/badge/arXiv-2504.06895 (v2)-B31B1B?style=flat&logo=arXiv" alt="arXiv v2 Paper">
                     </a>
                     <a href="{links['weights']}" target="_blank">
                         <img src="https://img.shields.io/badge/Hugging%20Face-Model%20Weights-FF9D00?style=flat&logo=Hugging%20Face" alt="Model Weights">
@@ -83,9 +89,9 @@ def init_interface(opt, *args, **kwargs) -> None:
                 text_prompt = gr.Textbox(label="Final prompt", value="", lines=3, visible=opt.enable_text_manipulation)
 
                 with gr.Row():
-                    sketch_img = img_with_mask(label="Sketch")
-                    reference_img = img_with_mask(label="Reference")
-                    background_img = img_with_mask(label="Background")
+                    sketch_img = img_block(label="Sketch")
+                    reference_img = img_block(label="Reference")
+                    background_img = img_block(label="Background")
 
                 with gr.Row():
                     style_enhance = gr.Checkbox(label="Style enhance", value=False)

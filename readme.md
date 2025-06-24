@@ -1,55 +1,77 @@
 # ColorizeDiffusion: Adjustable Sketch Colorization with Reference Image and Text
 
+<div align="center">
+
+[![arXiv Paper](https://img.shields.io/badge/arXiv-2407.15886%20(base)-B31B1B?style=flat&logo=arXiv)](https://arxiv.org/abs/2401.01456)
+[![WACV 2025](https://img.shields.io/badge/WACV%202025-v1-0CA4A5?style=flat&logo=Semantic%20Web)](https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html)
+[![CVPR 2025](https://img.shields.io/badge/CVPR%202025-v1.5-0CA4A5?style=flat&logo=Semantic%20Web)](https://arxiv.org/abs/2502.19937)
+[![arXiv v2 Paper](https://img.shields.io/badge/arXiv-2504.06895%20(v2)-B31B1B?style=flat&logo=arXiv)](https://arxiv.org/abs/2504.06895)
+[![Model Weights](https://img.shields.io/badge/Hugging%20Face-Model%20Weights-FF9D00?style=flat&logo=Hugging%20Face)](https://huggingface.co/tellurion/ColorizeDiffusion/tree/main)
+[![License](https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-4CAF50?style=flat&logo=Creative%20Commons)](https://github.com/tellurion-kanata/colorizeDiffusion/blob/master/LICENSE)
+
+</div>
+
 ![img](assets/teaser.png)
 
-(March. 2025)
-Fundemental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
-Version 1 - trained with 512px (WACV 2025): [ColorizeDiffusion](https://openaccess.thecvf.com/content/WACV2025/html/Yan_ColorizeDiffusion_Improving_Reference-Based_Sketch_Colorization_with_Latent_Diffusion_Model_WACV_2025_paper.html) Basic reference-based training. Released.  
-Version 1.5 - trained with 512px (CVPR 2025): [ColorizeDiffusion 1.5 (e-preprint)](https://arxiv.org/html/2502.19937v1) Solving spatial entangelment. Released.  
-Version 2 - trained with 768px, paper and code: Enhancing background and style transfer. Available soon.  
-Version XL - trained with 1024px : Enhancing embedding guidance for character colorization, geometry disentanglement. Ongoing.  
+(April. 2025)
+Official implementation of Colorize Diffusion.  
 
-Model weights are available: https://huggingface.co/tellurion/colorizer.
+Colorize Diffusion is a SD-based colorization framework that can achieve high-quality colorization results with arbitrary input pairs.
 
-## Implementation Details
-The repository offers the implementation of ColorizeDiffusion.  
-Now, only the noisy model introduced in the paper, which utilizes the local tokens.
+Fundamental issue for this repository: [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).  
+***Version 1*** - Base training, 512px. Released, ckpt starts with **mult**.   
+***Version 1.5*** - Solving spatial entanglement, 512px. Released, ckpt starts with **switch**.  
+***Version 2*** - Enhancing background and style transfer, 768px. Released, ckpt starts with **v2**.  
+***Version XL*** - Enhancing embedding guidance for character colorization, geometry disentanglement, 1024px. Available soon.  
+
 
 ## Getting Start
-To utilize the code in this repository, ensure that you have installed the required dependencies as specified in the requirements.
 
-### To install and run:
+-------------------------------------------------------------------------------------------
 ```shell
 conda env create -f environment.yaml
 conda activate hf
 ```
 
-## User Interface:
-We also provided a Web UI based on Gradio UI. To run it, just:
+## User Interface
+
+-------------------------------------------------------------------------------------------
+We implement a fully-featured UI. To run it, just:
 ```shell
 python -u app.py
 ```
-Then you can browse the UI in http://localhost:7860/.
+The default server address is http://localhost:7860.
 
-### Inference:
+#### Important inference options
+| Options               | Description                                                                                        |
+|:----------------------|:---------------------------------------------------------------------------------------------------|
+| BG enhance            | Low-level feature injection for backgrounds in v2 models.                                          |
+| Style enhance         | Low-level feature injection for style details in v2 models.                                        |
+| FG enhance            | Useless for currently open-sourced models.                                                         |
+| Reference strength    | Decreasing it to increase semantic fidelity to sketch inputs.                                      |
+| Foreground strength   | Similar to reference strength but only for foreground region. Need to activate FG or BG enhance.   |
+| Preprocessor          | Sketch preprocessing. **Extract** is suggested if the sketch input is complicated pencil drawing.  |
+| Line extractor        | Line extractors used when preprocessor is **Extract**.                                             |
+| Sketch guidance scale | Classifier-free guidance scale of the sketch image, suggested 1.                                   |
+| Attention injection   | Noised low-level feature injection, 2x inference time.                                             |
+
+
+### 768-level Cross-content colorization results (from v2)
+![img](assets/cross-1.png)
+![img](assets/cross-2.png)
+### 1536-level Character colorization results (from XL)
+![img](assets/disentanglement2.png)
+![img](assets/demon.png)
+
+## Manipulation
+
 -------------------------------------------------------------------------------------------
-#### Important inference options:
-| Options                   | Description                                                                       |
-|:--------------------------|:----------------------------------------------------------------------------------|
-| Mask guide mode           | Activate mask guided attention and corresponding lora weights for colorization.   | 
-| Crossattn scale           | Used to diminish all kinds of artifacts caused by the distribution problem.       |
-| Pad reference with margin | Used to diminish spatial entanglement, pad reference to T times of current width. |
-| Reference guidance scale  | Classifier-free guidance scale of the reference image, suggested 5.               |
-| Sketch guidance scale     | Classifier-free guidance scale of the sketch image, suggested 1.                  |
-| Attention injection       | Strengthen similarity with reference.                                             |
-| Visualize                 | Used for local manipulation. Visualize the regions selected by each threshold.    |
+The colorization results can be manipulated using text prompts, see [ColorizeDiffusion (e-print)](https://arxiv.org/abs/2401.01456).
 
-For artifacts like spatial entanglement (the distribution problem discussed in the paper) like this
-![img](assets/entanglement.png)  
-Please activate background enhance (optionally with foreground enhance).
-
-### Manipulation:
-The colorization results can be manipulated using text prompts.
+It is now deactivated by default. To activate it, use
+```shell
+python -u app.py -manipulate
+```
 
 For local manipulations, a visualization is provided to show the correlation between each prompt and tokens in the reference image.
 
@@ -67,7 +89,7 @@ The manipulation result and correlation visualization of the settings:
 ![img](assets/preview2.png)
 As you can see, the manipluation unavoidably changed some unrelated regions as it is taken on the reference embeddings.
 
-#### Manipulation options:
+#### Manipulation options
 | Options                   | Description                                                                                                                                                                                                       |
 | :-----                    |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Group index               | The index of selected manipulation sequences's parameter group.                                                                                                                                                   |
@@ -83,6 +105,83 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
 | Threshold2-Threshold3		| Select unrelated regions. Indicated by orange.                                                                                                                                                                    |
 | \>Threshold3				| Select most unrelated regions. Indicated by brown.                                                                                                                                                                |
 |Add| Click add to save current manipulation in the sequence.        |  
+
+
+## Training & inference & validation
+Our implementation is based on Accelerate and Deepspeed.  
+Before starting a training, first collect data and organize your training dataset as follows:
+
+```
+[dataset_path]
+├── image_list.json    # Optionally for image indexing
+├── color              # Color images
+│   ├── 0001.zip        
+|   |   ├── 10001.png
+|   |   ├── 100001.jpg
+│   |   └── ...
+│   ├── 0002.zip
+│   └── ...
+├── sketch             # Sketch images
+│   ├── 0001.zip
+|   |   ├── 10001.png
+|   |   ├── 100001.jpg
+│   |   └── ...
+│   ├── 0002.zip
+│   └── ...
+└── mask               # Mask images (required for fg-bg training)
+    ├── 0001.zip
+    |   ├── 10001.png
+    |   ├── 100001.jpg
+    |   └── ...
+    ├── 0002.zip
+    └── ...
+```
+For details of dataset organization, check `data/dataloader.py`.  
+Training command example:
+```
+accelerate launch --config_file [accelerate_config_file] \
+    train.py \
+    --name base \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/train/sd2.1/mult.yaml \
+    -pt [pretrained_model_path]
+```
+Note that the `batch size` here is micro batch size per gpu. If you run the command on 8 gpus, the total batch size is 512.
+
+Inference example:
+```
+python inference.py
+    --name inf \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/inference/val.yaml \ (for mult/switch-eps models)
+    -cfg configs/inference/v2-val.yaml \ (for v2 models)
+    -pt [pretrained_model_path]
+    -gs 5
+```
+
+Validation example:
+```
+python inference.py
+    --name val \
+    --dataroot [dataset_path] \
+    --batch_size 64 \
+    --num_threads 8 \
+    -cfg configs/inference/val.yaml \ (for mult/switch-eps models)
+    -cfg configs/inference/v2-val.yaml \ (for v2 models)
+    -pt [pretrained_model_path]
+    -gs 5
+    -val
+```
+
+The difference between inference and validation modes is that validation mode use randomly selected images as reference inputs.
+Refer to `options.py` for full arguments.  
+
+  
+
 
 ## Code reference
 1. [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
@@ -118,4 +217,11 @@ As you can see, the manipluation unavoidably changed some unrelated regions as i
     year = {2025},
     doi = {10.48550/arXiv.2502.19937},
 }
-```
+
+@article{yan2025colorizediffusionv2enhancingreferencebased,
+      title={ColorizeDiffusion v2: Enhancing Reference-based Sketch Colorization Through Separating Utilities}, 
+      author={Dingkun Yan and Xinrui Wang and Yusuke Iwasawa and Yutaka Matsuo and Suguru Saito and Jiaxian Guo},
+      year={2025},
+      journal = {arXiv e-prints},
+      doi = {10.48550/arXiv.2504.06895},
+}

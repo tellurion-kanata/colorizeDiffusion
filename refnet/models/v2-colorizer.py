@@ -257,8 +257,7 @@ class InferenceWrapper(CustomizedColorizer, CustomizedWrapper):
         control = []
         uc_control = []
         for idx, es in enumerate(encoded_sketch):
-            idx = min(idx, len(control_scale)-1)
-            es = es * control_scale[idx]
+            es = es * control_scale
             ec, uec = es.chunk(2)
             control.append(expand_to_batch_size(ec, bs))
             uc_control.append(expand_to_batch_size(uec, bs))

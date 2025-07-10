@@ -14,7 +14,7 @@ model:
     training_stage: 2
 
     bg_encoder_config:
-      target: refnet.modules.reference_net.UNetEncoder
+      target: refnet.modules.unet.UNetEncoder
       params:
         in_channels: 4
         model_channels: 320

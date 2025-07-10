@@ -32,7 +32,7 @@ Fundamental issue for this repository: [ColorizeDiffusion (e-print)](https://arx
 conda env create -f environment.yaml
 conda activate hf
 ```
-
+**Make sure ``open-clip-torch<=2.24.0``.**
 ## User Interface
 
 -------------------------------------------------------------------------------------------

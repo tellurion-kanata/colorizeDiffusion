@@ -24,7 +24,7 @@ Fundamental issue for this repository: [ColorizeDiffusion (e-print)](https://arx
 ***Version 2*** - Enhancing background and style transfer, 768px. Released, ckpt starts with **v2**.  
 ***Version XL*** - Enhancing embedding guidance for character colorization, geometry disentanglement, 1024px. Available soon.  
 XL version has been accepted by CVPR 2026, [code](https://github.com/tellurion-kanata/ColorizeDiffusionXL).
-Weights and online demo will be released by this month.
+Weights and online demo have been released. We will upload training details soon.
 
 ## Getting Start
 
@@ -227,5 +227,6 @@ Refer to `options.py` for full arguments.
       doi = {10.48550/arXiv.2504.06895},
 
 }
+
 
 
